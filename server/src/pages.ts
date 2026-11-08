@@ -31,6 +31,9 @@ const CSS = [
   '.nav{display:flex;align-items:center;gap:2px;padding:3px;margin-left:var(--u-4);border-radius:999px;border:1px solid hsl(var(--line));background:hsl(var(--surface-2)/.65)}',
   '.navlink{padding:6px 14px;border-radius:999px;font-size:13.5px;color:hsl(var(--muted));line-height:1.2;white-space:nowrap}',
   '.navlink:hover{color:hsl(var(--text));background:hsl(var(--surface)/.8);text-decoration:none}',
+  '.navlink .ico{flex:none;opacity:.9}',
+  '.navlink .lbl{line-height:1}',
+  '.cmdk-btn{color:hsl(var(--muted))}',
   '.navlink.active{color:hsl(var(--text));background:hsl(var(--surface));font-weight:600;box-shadow:0 1px 2px rgb(0 0 0 / .18)}',
   '.user{display:flex;align-items:center;gap:var(--u-3)}',
   '.avatar{width:28px;height:28px;border-radius:50%;display:grid;place-items:center;background:linear-gradient(135deg,hsl(var(--primary)),hsl(var(--primary)/.6));color:#fff;font-size:12px;font-weight:700;text-transform:uppercase}',
@@ -105,6 +108,13 @@ const CSS = [
   '@keyframes rise{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}',
   'dialog{border:1px solid hsl(var(--line));border-radius:12px;background:hsl(var(--surface));color:hsl(var(--text));padding:var(--u-7);max-width:min(560px,92vw);box-shadow:var(--shadow)}',
   'dialog::backdrop{background:rgb(0 0 0 / .55)}',
+  '.palette{width:min(560px,92vw);padding:0;overflow:hidden;margin-top:12vh;border-radius:12px}',
+  '.palette input{height:var(--u-11);border:0;border-bottom:1px solid hsl(var(--line));border-radius:0;background:transparent;padding:0 var(--u-5);font-size:15px}',
+  '.palette input:focus{box-shadow:none;border-color:hsl(var(--line))}',
+  '.cmdk-list{max-height:52vh;overflow:auto;padding:var(--u-3)}',
+  '.cmdk-item{display:flex;justify-content:space-between;align-items:center;gap:var(--u-4);width:100%;padding:10px var(--u-4);border:0;border-radius:var(--r-sm);background:transparent;color:hsl(var(--text));font:inherit;text-align:left;cursor:pointer}',
+  '.cmdk-item:hover,.cmdk-item.active{background:hsl(var(--surface-2))}',
+  '@media (max-width:640px){.navlink .lbl{display:none}.navlink{padding:6px 10px}}',
   '@media (prefers-reduced-motion:reduce){::view-transition-old(root),::view-transition-new(root),.card,body{animation:none!important;transition:none!important}}',
 ].join('');
 
@@ -147,21 +157,54 @@ const shell = (title: string, body: string, background?: string, surface: 'publi
   '<title>' + esc(title) + ' · DSH Remote</title><style>' + CSS + '</style>' + THEME +
   '</head><body' + bgStyle(background) + '><div id="hint" class="hintbar" role="status" aria-live="polite"></div>' + body + '</body></html>'
 
-const navlink = (href: string, label: string, active: boolean): string =>
-  '<a class="navlink' + (active ? ' active' : '') + '" href="' + href + '"' + (active ? ' aria-current="page"' : '') + '>' + label + '</a>'
+const ICONS: Record<string, string> = {
+  home: '<path d="M3 10.7 12 3l9 7.7"/><path d="M5.5 9.5V20a1 1 0 0 0 1 1H10v-6h4v6h3.5a1 1 0 0 0 1-1V9.5"/>',
+  user: '<circle cx="12" cy="8" r="3.6"/><path d="M4.5 20.5c1.6-3.4 4.2-5 7.5-5s5.9 1.6 7.5 5"/>',
+  shield: '<path d="M12 3l7 2.8V12c0 4.4-3 7.4-7 9-4-1.6-7-4.6-7-9V5.8z"/>',
+  search: '<circle cx="11" cy="11" r="6.5"/><path d="m16 16 4 4"/>',
+}
+
+const icon = (name: string): string =>
+  '<svg class="ico" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' + (ICONS[name] ?? '') + '</svg>'
+
+const navlink = (href: string, label: string, active: boolean, iconName: string): string =>
+  '<a class="navlink' + (active ? ' active' : '') + '" href="' + href + '"' + (active ? ' aria-current="page"' : '') +
+  ' title="' + attr(label) + '">' + icon(iconName) + '<span class="lbl">' + label + '</span></a>'
+
+const cmdPalette = '<dialog id="cmdk" class="palette" aria-label="命令面板">' +
+  '<input id="cmdk-input" type="search" placeholder="搜索页面或操作…" aria-label="搜索页面或操作" autocomplete="off">' +
+  '<div id="cmdk-list" class="cmdk-list" role="listbox" aria-label="结果"></div></dialog>' +
+  '<script>(function(){' +
+  'var dlg=document.getElementById("cmdk"),input=document.getElementById("cmdk-input"),list=document.getElementById("cmdk-list");' +
+  'var items=[{t:"概览",h:"/"},{t:"我的账户",h:"/account"},{t:"用户与设备",h:"/admin"},{t:"切换主题",a:"theme"},{t:"退出登录",a:"logout"}];' +
+  'var filtered=items,idx=0;' +
+  'function render(){list.innerHTML=filtered.length?filtered.map(function(it,i){return \'<button type="button" class="cmdk-item\'+(i===idx?" active":"")+\'" role="option" aria-selected="\'+(i===idx)+\'" data-i="\'+i+\'"><span>\'+dshEsc(it.t)+\'</span><span class="muted small">\'+dshEsc(it.h||"")+\'</span></button>\'}).join(""):\'<div class="muted small" style="padding:10px">没有匹配项</div>\'}' +
+  'function open(){if(dlg.open)return;input.value="";filtered=items;idx=0;render();dlg.showModal();input.focus()}' +
+  'function close(){if(dlg.open)dlg.close()}' +
+  'function run(it){close();if(!it)return;if(it.h)location.href=it.h;else if(it.a==="theme")toggleTheme();else if(it.a==="logout")fetch("/api/v1/auth/logout",{method:"POST"}).then(function(){location.href="/login"})}' +
+  'var btn=document.getElementById("cmdk-open");if(btn)btn.onclick=open;' +
+  'document.addEventListener("keydown",function(e){if((e.metaKey||e.ctrlKey)&&(e.key==="k"||e.key==="K")){e.preventDefault();open();return}if(!dlg.open)return;' +
+  'if(e.key==="Escape"){close();return}if(e.key==="ArrowDown"){e.preventDefault();idx=(idx+1)%Math.max(filtered.length,1);render();return}' +
+  'if(e.key==="ArrowUp"){e.preventDefault();idx=(idx-1+Math.max(filtered.length,1))%Math.max(filtered.length,1);render();return}' +
+  'if(e.key==="Enter"){e.preventDefault();run(filtered[idx]);return}});' +
+  'input.addEventListener("input",function(){var q=input.value.trim().toLowerCase();filtered=items.filter(function(it){return it.t.toLowerCase().indexOf(q)>=0});idx=0;render()});' +
+  'list.addEventListener("click",function(e){var b=e.target.closest(".cmdk-item");if(b)run(filtered[+b.dataset.i])});' +
+  'dlg.addEventListener("click",function(e){if(e.target===dlg)close()});' +
+  '})();</script>'
 
 const topbar = (user: string, active: string): string =>
   '<a class="skip" href="#main">跳到主内容</a><header class="topbar">' +
   '<a class="brand" href="/" aria-label="DSH Remote 首页"><span class="dot"></span><span class="wordmark">DSH <em>Remote</em></span></a>' +
   '<nav class="nav" aria-label="主导航">' +
-  navlink('/', '概览', active === 'home') +
-  navlink('/account', '账户', active === 'account') +
-  navlink('/admin', '管理', active === 'admin') +
+  navlink('/', '概览', active === 'home', 'home') +
+  navlink('/account', '账户', active === 'account', 'user') +
+  navlink('/admin', '管理', active === 'admin', 'shield') +
   '</nav><div class="spacer"></div>' +
   '<div class="user"><span class="avatar" aria-hidden="true">' + esc(user.slice(0, 1)) + '</span>' +
   '<span class="who" title="' + attr(user) + '">' + esc(user) + '</span></div>' +
   themeButton +
-  '<form method="post" action="/api/v1/auth/logout" style="margin:0"><button class="btn ghost sm" type="submit">退出</button></form></header>'
+  '<button class="icon-btn cmdk-btn" type="button" id="cmdk-open" aria-label="打开命令面板" aria-keyshortcuts="Meta+K Control+K" title="命令面板 ⌘K">' + icon('search') + '</button>' +
+  '<form method="post" action="/api/v1/auth/logout" style="margin:0"><button class="btn ghost sm" type="submit">退出</button></form></header>' + cmdPalette
 
 const card = (title: string, body: string, extra = ''): string =>
   '<section class="card"><h2>' + title + (extra ? '<span class="muted small">' + extra + '</span>' : '') + '</h2>' + body + '</section>'

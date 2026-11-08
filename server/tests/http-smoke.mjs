@@ -54,6 +54,11 @@ const adminLogin = await req('/api/v1/auth/login', { method: 'POST', ...json({ e
 check('admin login returns client shape', adminLogin.status === 200 && adminLogin.body.account === 'admin@example.com' && adminLogin.body.isAdmin === true)
 const adminCookie = cookieOf(adminLogin)
 
+const homeHtml = String((await req('/', { headers: { cookie: adminCookie } })).body)
+check('command palette markup', homeHtml.includes('id="cmdk"') && homeHtml.includes('cmdk-open'))
+check('nav icons rendered', homeHtml.includes('class="ico"') && homeHtml.includes('class="navlink'))
+check('active nav marked', homeHtml.includes('aria-current="page"'))
+
 const created = await req('/api/v1/admin/users', { method: 'POST', headers: { 'content-type': 'application/json', cookie: adminCookie }, body: JSON.stringify({ username: 'alice', password: 'alice-password-123', role: 'user' }) })
 check('admin creates alice', created.status === 201 && typeof created.body.deviceKey === 'string')
 const bob = await req('/api/v1/admin/users', { method: 'POST', headers: { 'content-type': 'application/json', cookie: adminCookie }, body: JSON.stringify({ username: 'bob', password: 'bob-password-123', role: 'user' }) })
