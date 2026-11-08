@@ -222,7 +222,7 @@ export function createApp(settings: Settings, deps: { pool?: Pool; mailer?: Mail
     const path = url.pathname
     const method = req.method ?? 'GET'
     res.setHeader('X-Content-Type-Options', 'nosniff')
-    res.setHeader('Referrer-Policy', 'no-referrer')
+    res.setHeader('Referrer-Policy', 'same-origin')
     res.setHeader('Content-Security-Policy', "default-src 'self'; img-src 'self' https: data:; style-src 'self' 'unsafe-inline'; script-src 'self' 'unsafe-inline'; connect-src 'self'; base-uri 'none'; frame-ancestors 'none'")
     res.setHeader('Cache-Control', 'no-store')
 
@@ -231,12 +231,21 @@ export function createApp(settings: Settings, deps: { pool?: Pool; mailer?: Mail
       // Until an operator pins the public origin, accept an Origin whose host matches
       // the request host (scheme differs behind a TLS-terminating proxy).
       const derived = runtime.current.server.publicUrl === '' && !settings.publicUrlExplicit
+      const header = String(req.headers.origin)
       let sameHost = false
-      try { sameHost = new URL(req.headers.origin).host === new URL(origin).host } catch { sameHost = false }
-      if (!(derived && sameHost)) throw new ApiError('AUTH_INVALID', 403)
+      try { sameHost = new URL(header).host === new URL(origin).host } catch { sameHost = false }
+      // Chrome sends "Origin: null" for opaque origins such as plain-http 127.0.0.1.
+      // Same-origin form posts are still identifiable by their Referer, which the
+      // "same-origin" referrer policy keeps and cross-site requests cannot forge.
+      let opaqueSameOrigin = false
+      if (header === 'null') {
+        try { opaqueSameOrigin = new URL(String(req.headers.referer ?? '')).origin === origin } catch { opaqueSameOrigin = false }
+      }
+      if (!opaqueSameOrigin && !(derived && sameHost)) throw new ApiError('AUTH_INVALID', 403)
     }
     if (!isCallback && req.headers['sec-fetch-site'] === 'cross-site') throw new ApiError('AUTH_INVALID', 403)
 
+    if (method === 'GET' && path === '/favicon.ico') { res.writeHead(204, { 'cache-control': 'public, max-age=604800' }); res.end(); return }
     if (method === 'GET' && (path === '/healthz' || path === '/health')) return json(res, 200, { status: 'ok' })
     const setupExempt = path === '/setup' || path === '/api/v1/setup' || path === '/ready'
     if (!setupExempt && (await needsSetup())) {
@@ -777,11 +786,16 @@ export function createApp(settings: Settings, deps: { pool?: Pool; mailer?: Mail
       }
       if (method === 'POST' && path === '/api/v1/admin/users') {
         const input = await body(req)
-        const username = String(input.username ?? '').trim()
-        if (username.length < 3 || username.includes('@')) throw new ApiError('INVALID_MESSAGE', 400)
+        const raw = String(input.username ?? input.email ?? '').trim()
+        const EMAIL_RE = /^[^@\s]+@[^@\s]+\.[^@\s]+$/
+        // An email may be used as the account name: it then also becomes the
+        // mailbox for verification codes, exactly like the bootstrap admin.
+        const isEmailName = EMAIL_RE.test(raw)
+        const username = isEmailName ? raw.toLowerCase() : raw
+        if (!isEmailName && (username.length < 3 || username.includes('@'))) throw new ApiError('INVALID_MESSAGE', 400)
         const password = typeof input.password === 'string' && input.password.length >= 12 ? input.password : undefined
         const role = input.role === 'admin' ? 'admin' as const : 'user' as const
-        const email = typeof input.email === 'string' && input.email.includes('@') ? String(input.email).trim().toLowerCase() : undefined
+        const email = isEmailName ? username : (typeof input.email === 'string' && input.email.includes('@') ? String(input.email).trim().toLowerCase() : undefined)
         const created = await store.createUser({ username, role, ...(password ? { password } : {}), ...(email ? { email, emailVerified: true } : {}) }).catch((error: any) => {
           throw new ApiError(String(error?.code) === '23505' ? 'USER_EXISTS' : 'INVALID_MESSAGE', 409)
         })
@@ -850,6 +864,14 @@ export function createApp(settings: Settings, deps: { pool?: Pool; mailer?: Mail
       const user = { id: ticket.userId, username: '(device-key)', role: 'user' as const }
       await store.audit('device.registered', user.username, user.id, { deviceId: input.device.deviceId })
       return json(res, 200, await store.register(user.id, input.device, ticket?.keyId))
+    }
+    // Web sessions read their own device list here; the bearer branch below
+    // serves the same shape to enrolled devices.
+    if (method === 'GET' && path === '/api/v1/account/devices' && !bearer(req)) {
+      const session = await sessionUser(req)
+      if (!session) throw new ApiError('AUTH_REQUIRED', 401)
+      const items = store.list(session.id).map(d => ({ ...d.descriptor, membershipId: membershipOf(d.userId), online: gateway.peers.has(d.descriptor.deviceId), lastSeenAt: d.lastSeenAt }))
+      return json(res, 200, { items, serverUrl: origin, transport: 'webrtc' })
     }
     if (bearer(req) || path.startsWith('/api/v1/devices') || path.startsWith('/api/v1/turn')) {
       const device = store.authenticate(bearer(req))

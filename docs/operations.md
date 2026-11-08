@@ -54,3 +54,17 @@ migration version table. Back up before upgrading, and keep the server stopped w
 - `/ready` — database reachable.
 - `audit_log` — registration, login failures, password/email changes, OIDC binding, key rotation and
   device revocation.
+
+## Browser check
+
+`server/scripts/browser-check.mjs` drives a real Chromium through bootstrap, login,
+the command palette, the admin console and a 360px viewport. It is not part of CI
+(it needs a browser build); run it against a disposable database:
+
+```bash
+pnpm build
+createdb dshbrowser
+DATABASE_URL=postgres://dsh:dsh@127.0.0.1:5432/dshbrowser node server/scripts/browser-check.mjs
+```
+
+Screenshots land in `./browser-shots/`.

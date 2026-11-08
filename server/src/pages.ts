@@ -164,7 +164,9 @@ const bgStyle = (url?: string): string => (url && /^https:\/\/[A-Za-z0-9._~:/?#\
 const shell = (title: string, body: string, background?: string, surface: 'public' | 'console' = 'public'): string =>
   '<!doctype html><html lang="zh-CN" data-surface="' + surface + '"><head><meta charset="utf-8">' +
   '<meta name="viewport" content="width=device-width,initial-scale=1">' +
-  '<title>' + esc(title) + ' · DSH Remote</title><style>' + CSS + '</style>' + THEME +
+  '<title>' + esc(title) + ' · DSH Remote</title>' +
+  '<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 32 32%22%3E%3Crect width=%2232%22 height=%2232%22 rx=%228%22 fill=%22%235b8cff%22/%3E%3Cpath d=%22M9 21V11l7 5 7-5v10%22 stroke=%22white%22 stroke-width=%222.4%22 fill=%22none%22 stroke-linecap=%22round%22 stroke-linejoin=%22round%22/%3E%3C/svg%3E">' +
+  '<style>' + CSS + '</style>' + THEME +
   '</head><body' + bgStyle(background) + '><div id="hint" class="hintbar" role="status" aria-live="polite"></div>' + body + '</body></html>'
 
 const ICONS: Record<string, string> = {
