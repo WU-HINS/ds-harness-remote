@@ -108,6 +108,16 @@ const CSS = [
   '@keyframes rise{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}',
   'dialog{border:1px solid hsl(var(--line));border-radius:12px;background:hsl(var(--surface));color:hsl(var(--text));padding:var(--u-7);max-width:min(560px,92vw);box-shadow:var(--shadow)}',
   'dialog::backdrop{background:rgb(0 0 0 / .55)}',
+  '.subnav{max-width:1252px;margin:0 auto;padding:var(--u-5) clamp(var(--u-6),3vw,var(--u-9)) 0;display:flex;gap:var(--u-2)}',
+  '.subtab{padding:7px 14px;border-radius:999px;font-size:13.5px;color:hsl(var(--muted));border:1px solid transparent}',
+  '.subtab:hover{color:hsl(var(--text));background:hsl(var(--surface-2));text-decoration:none}',
+  '.subtab.active{color:hsl(var(--text));background:hsl(var(--surface));border-color:hsl(var(--line));font-weight:600}',
+  '.sk{display:block;height:12px;border-radius:6px;background:linear-gradient(90deg,hsl(var(--surface-2)) 0%,hsl(var(--line)/.55) 50%,hsl(var(--surface-2)) 100%);background-size:200% 100%;animation:shine 1.2s linear infinite}',
+  '@keyframes shine{from{background-position:200% 0}to{background-position:-200% 0}}',
+  '@media (prefers-reduced-motion:reduce){.sk{animation:none}}',
+  '.anchors{position:sticky;top:calc(63px + var(--u-5));display:flex;flex-direction:column;gap:2px;margin-bottom:var(--gap-card)}',
+  '.anchors a{padding:7px 10px;border-radius:var(--r-sm);color:hsl(var(--muted));font-size:13px}',
+  '.anchors a:hover{background:hsl(var(--surface-2));color:hsl(var(--text));text-decoration:none}',
   '.palette{width:min(560px,92vw);padding:0;overflow:hidden;margin-top:12vh;border-radius:12px}',
   '.palette input{height:var(--u-11);border:0;border-bottom:1px solid hsl(var(--line));border-radius:0;background:transparent;padding:0 var(--u-5);font-size:15px}',
   '.palette input:focus{box-shadow:none;border-color:hsl(var(--line))}',
@@ -176,7 +186,7 @@ const cmdPalette = '<dialog id="cmdk" class="palette" aria-label="命令面板">
   '<div id="cmdk-list" class="cmdk-list" role="listbox" aria-label="结果"></div></dialog>' +
   '<script>(function(){' +
   'var dlg=document.getElementById("cmdk"),input=document.getElementById("cmdk-input"),list=document.getElementById("cmdk-list");' +
-  'var items=[{t:"概览",h:"/"},{t:"我的账户",h:"/account"},{t:"用户与设备",h:"/admin"},{t:"切换主题",a:"theme"},{t:"退出登录",a:"logout"}];' +
+  'var items=[{t:"概览",h:"/"},{t:"我的账户",h:"/account"},{t:"用户与设备",h:"/admin"},{t:"设置",h:"/admin/settings"},{t:"切换主题",a:"theme"},{t:"退出登录",a:"logout"}];' +
   'var filtered=items,idx=0;' +
   'function render(){list.innerHTML=filtered.length?filtered.map(function(it,i){return \'<button type="button" class="cmdk-item\'+(i===idx?" active":"")+\'" role="option" aria-selected="\'+(i===idx)+\'" data-i="\'+i+\'"><span>\'+dshEsc(it.t)+\'</span><span class="muted small">\'+dshEsc(it.h||"")+\'</span></button>\'}).join(""):\'<div class="muted small" style="padding:10px">没有匹配项</div>\'}' +
   'function open(){if(dlg.open)return;input.value="";filtered=items;idx=0;render();dlg.showModal();input.focus()}' +
@@ -212,7 +222,9 @@ const card = (title: string, body: string, extra = ''): string =>
 const table = (headers: string[], bodyId: string, empty: string): string =>
   '<div class="table-wrap"><table class="table"><thead><tr>' +
   headers.map(h => '<th scope="col">' + h + '</th>').join('') +
-  '</tr></thead><tbody id="' + bodyId + '"><tr><td colspan="' + headers.length + '" class="muted">' + empty + '</td></tr></tbody></table></div>'
+  '</tr></thead><tbody id="' + bodyId + '" aria-busy="true">' +
+  Array.from({ length: 3 }, () => '<tr>' + headers.map(() => '<td><span class="sk"></span></td>').join('') + '</tr>').join('') +
+  '</tbody></table><noscript><p class="muted small">' + empty + '</p></noscript></div>'
 
 const keyDialog = '<dialog id="keydlg" aria-labelledby="keydlgtitle"><h2 id="keydlgtitle" style="border:0;padding:0;margin-bottom:10px">设备密钥</h2>' +
   '<p class="muted small" style="margin:0 0 10px">只显示这一次，请立即保存。</p>' +
@@ -363,8 +375,24 @@ export function accountPage(username: string, email: string, oidcBound: boolean,
     '</script>', background, 'console')
 }
 
+
+const adminTabs = (active: 'people' | 'settings'): string =>
+  '<nav class="subnav" aria-label="管理分区">' +
+  '<a class="subtab' + (active === 'people' ? ' active' : '') + '" href="/admin"' + (active === 'people' ? ' aria-current="page"' : '') + '>用户与设备</a>' +
+  '<a class="subtab' + (active === 'settings' ? ' active' : '') + '" href="/admin/settings"' + (active === 'settings' ? ' aria-current="page"' : '') + '>设置</a>' +
+  '</nav>'
+
+const settingsAnchors = [
+  ['server', '服务地址'], ['appearance', '外观'], ['smtp', 'SMTP'], ['oidc', 'OIDC'], ['limits', '限额与 ICE'],
+]
+
+const anchorsNav = (): string =>
+  '<nav class="anchors" aria-label="本页目录">' +
+  settingsAnchors.map(([id, label]) => '<a href="#' + id + '">' + label + '</a>').join('') +
+  '</nav>'
+
 export function adminPage(username: string, background?: string): string {
-  return shell('管理', topbar(username, 'admin') + '<main class="wrap" id="main"><div class="grid-phi"><div>' +
+  return shell('用户与设备', topbar(username, 'admin') + adminTabs('people') + '<main class="wrap" id="main"><div class="grid-phi"><div>' +
     card('用户', table(['邮箱 / 用户名', '设备用户名', '角色', '密钥', '操作'], 'rows', '还没有用户') +
       '<div class="divider"></div><div class="grid-2">' +
       '<div><label class="label" for="nu">新建邮箱</label><input class="input" id="nu" type="email" placeholder="user@example.com" autocomplete="off"></div>' +
@@ -377,61 +405,26 @@ export function adminPage(username: string, background?: string): string {
     card('设备', table(['用户', '设备', '角色', '状态', '操作'], 'devices', '还没有设备接入')) +
     card('最近审计', table(['时间', '操作者', '动作'], 'audit', '暂无审计记录')) +
     '</div><aside>' +
-    card('服务地址', '<div class="stack">' +
-      '<div><label class="label" for="public-url">公网地址</label><input class="input" id="public-url" placeholder="https://remote.example.com"><span class="small muted">仅 https，留空则按请求推导</span></div>' +
-      '<div><label class="label" for="trusted-proxies">额外可信代理</label><input class="input" id="trusted-proxies" placeholder="203.0.113.7, 2001:db8::2"><span class="small muted">内网与回环默认信任</span></div>' +
-      '<button class="btn ghost" type="button" id="save-server">保存</button></div>') +
-    card('外观', '<div class="stack"><div><label class="label" for="bg-url">登录页背景</label><input class="input" id="bg-url" placeholder="https://t.hinswu.top/pixiv"></div>' +
-      '<button class="btn ghost" type="button" id="save-ui">保存</button></div>') +
-    card('OIDC', '<div class="stack">' +
-      '<label class="row small" for="oidc-enabled"><input type="checkbox" id="oidc-enabled" style="width:auto"> 启用 OIDC</label>' +
-      '<label class="row small" for="only-sso"><input type="checkbox" id="only-sso" style="width:auto"> 仅允许 SSO</label>' +
-      '<label class="row small" for="bind-require"><input type="checkbox" id="bind-require" style="width:auto"> 绑定已有账户需二次校验</label>' +
-      '<div><label class="label" for="issuer">Issuer</label><input class="input" id="issuer" placeholder="https://idp.example.com"></div>' +
-      '<div><label class="label" for="client-id">Client ID</label><input class="input" id="client-id"></div>' +
-      '<div><label class="label" for="client-secret">Client Secret（留空不修改）</label><input class="input" id="client-secret" type="password" autocomplete="new-password"></div>' +
-      '<div><label class="label" for="scopes">Scopes</label><input class="input" id="scopes" value="openid email profile"></div>' +
-      '<div><label class="label" for="allowed-domains">允许邮箱域</label><input class="input" id="allowed-domains" placeholder="example.com"></div>' +
-      '<button class="btn ghost" type="button" id="save-oidc">保存 OIDC</button></div>') +
-    card('SMTP', '<div class="stack">' +
-      '<div class="grid-2"><div><label class="label" for="smtp-host">Host</label><input class="input" id="smtp-host"></div><div><label class="label" for="smtp-port">Port</label><input class="input" id="smtp-port" type="number" value="587"></div></div>' +
-      '<label class="row small" for="smtp-secure"><input type="checkbox" id="smtp-secure" style="width:auto"> 直接 TLS（465）</label>' +
-      '<div class="grid-2"><div><label class="label" for="smtp-user">用户名</label><input class="input" id="smtp-user"></div><div><label class="label" for="smtp-pass">密码（留空不修改）</label><input class="input" id="smtp-pass" type="password" autocomplete="new-password"></div></div>' +
-      '<div><label class="label" for="smtp-from">发件人</label><input class="input" id="smtp-from"></div>' +
-      '<div class="row"><button class="btn ghost" type="button" id="save-smtp">保存</button><button class="btn ghost" type="button" id="test-smtp">发送测试</button>' +
-      '<input class="input" id="smtp-test-to" aria-label="测试收件人" placeholder="test@example.com" style="max-width:220px"></div></div>') +
-    card('限额与 ICE', '<div class="stack">' +
-      '<div class="grid-2"><div><label class="label" for="session-ttl">会话 TTL(ms)</label><input class="input" id="session-ttl" type="number"></div>' +
-      '<div><label class="label" for="conn-limit">并发连接</label><input class="input" id="conn-limit" type="number"></div>' +
-      '<div><label class="label" for="user-rate">用户/分钟</label><input class="input" id="user-rate" type="number"></div>' +
-      '<div><label class="label" for="anon-rate">匿名/分钟</label><input class="input" id="anon-rate" type="number"></div></div>' +
-      '<div><label class="label" for="stun">STUN</label><input class="input" id="stun"></div>' +
-      '<div><label class="label" for="turn">TURN</label><input class="input" id="turn"></div>' +
-      '<div class="grid-2"><div><label class="label" for="turn-user">TURN 用户名</label><input class="input" id="turn-user"></div><div><label class="label" for="turn-pass">TURN 密码</label><input class="input" id="turn-pass" type="password" autocomplete="new-password"></div></div>' +
-      '<button class="btn ghost" type="button" id="save-limits">保存</button></div>') +
+    card('说明', '<p class="muted small" style="margin:0 0 12px">用户、密钥、设备与审计都在本页；域名、OIDC、SMTP 与限额在「设置」。</p>' +
+      '<a class="btn ghost block" href="/admin/settings">前往设置</a>') +
+    card('安全提示', '<p class="muted small" style="margin:0">吊销密钥会让用它接入的设备立即掉线，且同一设备 ID 无法重新接入；删除用户会同时吊销其全部设备与会话。</p>') +
     '</aside></div></main>' + keyDialog +
     '<script>' +
     'var currentUser=null;' +
     'function emptyRow(n,t){return \'<tr><td colspan="\'+n+\'" class="muted">\'+t+\'</td></tr>\'}' +
-    'function loadUsers(){return dshApi("/api/v1/admin/users").then(function(r){var rows=r.body.users||[];document.getElementById("userCount").textContent=rows.length;' +
-    'document.getElementById("rows").innerHTML=rows.length?rows.map(function(u){var name=dshEsc(u.username);return \'<tr><td>\'+name+\'</td><td class="mono small">\'+dshEsc(u.deviceUsername||"-")+\'</td><td>\'+dshEsc(u.role)+\'</td><td>\'+u.deviceKeys+\'</td><td><div class="actions">\'+' +
+    'function $(id){return document.getElementById(id)}' +
+    'function loadUsers(){return dshApi("/api/v1/admin/users").then(function(r){var rows=r.body.users||[];$("userCount").textContent=rows.length;' +
+    '$("rows").innerHTML=rows.length?rows.map(function(u){var name=dshEsc(u.username);return \'<tr><td>\'+name+\'</td><td class="mono small">\'+dshEsc(u.deviceUsername||"-")+\'</td><td>\'+dshEsc(u.role)+\'</td><td>\'+u.deviceKeys+\'</td><td><div class="actions">\'+' +
     '\'<button class="btn ghost sm" data-a="pick" data-id="\'+dshEsc(u.id)+\'" data-name="\'+dshEsc(u.deviceUsername||u.username)+\'" aria-label="查看 \'+name+\' 的设备密钥">密钥</button>\'+' +
     '\'<button class="btn ghost sm" data-a="toggle" data-id="\'+dshEsc(u.id)+\'" aria-label="\'+(u.disabled?"启用":"禁用")+\' \'+name+\'">\'+(u.disabled?"启用":"禁用")+\'</button>\'+' +
     '\'<button class="btn danger sm" data-a="del" data-id="\'+dshEsc(u.id)+\'" data-name="\'+name+\'" aria-label="删除 \'+name+\'">删除</button></div></td></tr>\'}).join(""):emptyRow(5,"还没有用户")})}' +
-    'function loadKeys(){var t=document.getElementById("keys");if(!currentUser){t.innerHTML=emptyRow(4,"先在用户行点「密钥」选择用户");return}' +
+    'function loadKeys(){var t=$("keys");if(!currentUser){t.innerHTML=emptyRow(4,"先在用户行点「密钥」选择用户");return}' +
     'dshApi("/api/v1/admin/users/"+encodeURIComponent(currentUser.id)+"/device-keys").then(function(r){var ks=r.body.keys||[];' +
     't.innerHTML=ks.length?ks.map(function(k){return \'<tr><td>\'+dshEsc(k.label)+\'</td><td><span class="badge">\'+k.deviceCount+\'</span></td><td>\'+(k.revoked?\'<span class="badge off">已吊销</span>\':\'<span class="badge ok">正常</span>\')+\'</td><td>\'+(k.revoked||k.id==="unbound"?"":\'<button class="btn danger sm" data-a="revoke" data-id="\'+dshEsc(k.id)+\'" aria-label="吊销密钥 \'+dshEsc(k.label)+\'">吊销</button>\')+\'</td></tr>\'}).join(""):emptyRow(4,"该用户还没有密钥")})}' +
     'function loadDevices(){dshApi("/api/v1/admin/devices").then(function(r){var xs=r.body.items||[];' +
-    'document.getElementById("devices").innerHTML=xs.length?xs.map(function(x){return \'<tr><td>\'+dshEsc(x.username)+\'</td><td>\'+dshEsc(x.name)+\'</td><td>\'+dshEsc(x.role)+\'</td><td>\'+(x.revoked?\'<span class="badge off">已吊销</span>\':(x.online?\'<span class="badge ok">在线</span>\':\'<span class="badge">离线</span>\'))+\'</td><td>\'+(x.revoked?"":\'<button class="btn danger sm" data-a="revoke-device" data-id="\'+dshEsc(x.deviceId)+\'" data-name="\'+dshEsc(x.name)+\'">吊销</button>\')+\'</td></tr>\'}).join(""):emptyRow(5,"还没有设备接入")})}' +
+    '$("devices").innerHTML=xs.length?xs.map(function(x){return \'<tr><td>\'+dshEsc(x.username)+\'</td><td>\'+dshEsc(x.name)+\'</td><td>\'+dshEsc(x.role)+\'</td><td>\'+(x.revoked?\'<span class="badge off">已吊销</span>\':(x.online?\'<span class="badge ok">在线</span>\':\'<span class="badge">离线</span>\'))+\'</td><td>\'+(x.revoked?"":\'<button class="btn danger sm" data-a="revoke-device" data-id="\'+dshEsc(x.deviceId)+\'" data-name="\'+dshEsc(x.name)+\'">吊销</button>\')+\'</td></tr>\'}).join(""):emptyRow(5,"还没有设备接入")})}' +
     'function loadAudit(){dshApi("/api/v1/admin/audit?limit=20").then(function(r){var xs=r.body.items||[];' +
-    'document.getElementById("audit").innerHTML=xs.length?xs.map(function(x){return \'<tr><td class="muted small">\'+dshEsc(new Date(x.at).toLocaleString())+\'</td><td>\'+dshEsc(x.actor||"-")+\'</td><td>\'+dshEsc(x.action)+\'</td></tr>\'}).join(""):emptyRow(3,"暂无审计记录")})}' +
-    'function loadSettings(){dshApi("/api/v1/admin/settings").then(function(r){var b=r.body,o=b.oidc||{},l=b.limits||{},i=b.ice||{},s=b.smtp||{},sv=b.server||{},ui=b.ui||{};' +
-    '$("public-url").value=sv.publicUrl||"";$("trusted-proxies").value=(sv.trustedProxyIps||[]).join(",");$("bg-url").value=ui.backgroundUrl||"";' +
-    '$("oidc-enabled").checked=!!o.enabled;$("only-sso").checked=!!o.onlySso;$("bind-require").checked=o.bindRequireVerification!==false;$("issuer").value=o.issuer||"";$("client-id").value=o.clientId||"";$("scopes").value=o.scopes||"openid email profile";$("allowed-domains").value=(o.allowedDomains||[]).join(",");' +
-    '$("session-ttl").value=l.sessionTtlMs||"";$("conn-limit").value=l.userConnectionLimit||"";$("user-rate").value=l.userRatePerMinute||"";$("anon-rate").value=l.anonRatePerMinute||"";' +
-    '$("stun").value=(i.stunUrls||[]).join(",");$("turn").value=(i.turnUrls||[]).join(",");$("turn-user").value=i.turnUsername||"";' +
-    '$("smtp-host").value=s.host||"";$("smtp-port").value=s.port||587;$("smtp-secure").checked=!!s.secure;$("smtp-user").value=s.user||"";$("smtp-from").value=s.from||""})}' +
-    'function $(id){return document.getElementById(id)}' +
+    '$("audit").innerHTML=xs.length?xs.map(function(x){return \'<tr><td class="muted small">\'+dshEsc(new Date(x.at).toLocaleString())+\'</td><td>\'+dshEsc(x.actor||"-")+\'</td><td>\'+dshEsc(x.action)+\'</td></tr>\'}).join(""):emptyRow(3,"暂无审计记录")})}' +
     'document.addEventListener("click",function(e){var b=e.target.closest?e.target.closest("button[data-a]"):null;if(!b)return;var id=b.getAttribute("data-id"),a=b.getAttribute("data-a");' +
     'if(a==="pick"){currentUser={id:id,deviceUsername:b.getAttribute("data-name")};$("keyOwner").textContent=currentUser.deviceUsername;loadKeys()}' +
     'else if(a==="toggle"){dshApi("/api/v1/admin/users/"+encodeURIComponent(id),{method:"PATCH",headers:{"content-type":"application/json"},body:JSON.stringify({toggle:true})}).then(loadUsers)}' +
@@ -444,12 +437,62 @@ export function adminPage(username: string, background?: string): string {
     '$("create-key").onclick=function(){if(!currentUser)return dshToast("先在用户行点「密钥」选择用户","err");' +
     'dshPost("/api/v1/admin/users/"+encodeURIComponent(currentUser.id)+"/device-keys",{label:$("key-label").value.trim()||"device"}).then(function(r){' +
     'if(r.ok){showKey(r.body.key);$("key-label").value="";loadKeys();loadUsers()}else dshToast(dshErr(r.body.error&&r.body.error.code,r.status),"err")})};' +
+    'loadUsers();loadKeys();loadDevices();loadAudit();' +
+    '</script>', background, 'console')
+}
+
+export function adminSettingsPage(username: string, background?: string): string {
+  return shell('设置', topbar(username, 'admin') + adminTabs('settings') + '<main class="wrap" id="main"><div class="grid-phi"><div>' +
+    '<section class="card" id="server"><h2>服务地址</h2><div class="stack">' +
+    '<div><label class="label" for="public-url">公网地址</label><input class="input" id="public-url" placeholder="https://remote.example.com"><span class="small muted">仅 https，留空则按请求推导</span></div>' +
+    '<div><label class="label" for="trusted-proxies">额外可信代理</label><input class="input" id="trusted-proxies" placeholder="203.0.113.7, 2001:db8::2"><span class="small muted">内网与回环默认信任</span></div>' +
+    '<div><button class="btn" type="button" id="save-server">保存服务地址</button></div></div></section>' +
+    '<section class="card" id="appearance"><h2>外观</h2><div class="stack">' +
+    '<div><label class="label" for="bg-url">登录页背景</label><input class="input" id="bg-url" placeholder="https://t.hinswu.top/pixiv"><span class="small muted">仅 https；留空用默认图</span></div>' +
+    '<div><button class="btn" type="button" id="save-ui">保存外观</button></div></div></section>' +
+    '<section class="card" id="smtp"><h2>SMTP</h2><div class="stack">' +
+    '<div class="grid-2"><div><label class="label" for="smtp-host">Host</label><input class="input" id="smtp-host"></div><div><label class="label" for="smtp-port">Port</label><input class="input" id="smtp-port" type="number" value="587"></div></div>' +
+    '<label class="row small" for="smtp-secure"><input type="checkbox" id="smtp-secure" style="width:auto"> 直接 TLS（465）</label>' +
+    '<div class="grid-2"><div><label class="label" for="smtp-user">用户名</label><input class="input" id="smtp-user"></div><div><label class="label" for="smtp-pass">密码（留空不修改）</label><input class="input" id="smtp-pass" type="password" autocomplete="new-password"></div></div>' +
+    '<div><label class="label" for="smtp-from">发件人</label><input class="input" id="smtp-from"></div>' +
+    '<div class="row"><button class="btn" type="button" id="save-smtp">保存 SMTP</button><button class="btn ghost" type="button" id="test-smtp">发送测试</button>' +
+    '<input class="input" id="smtp-test-to" aria-label="测试收件人" placeholder="test@example.com" style="max-width:220px"></div></div></section>' +
+    '<section class="card" id="oidc"><h2>OIDC</h2><div class="stack">' +
+    '<label class="row small" for="oidc-enabled"><input type="checkbox" id="oidc-enabled" style="width:auto"> 启用 OIDC</label>' +
+    '<label class="row small" for="only-sso"><input type="checkbox" id="only-sso" style="width:auto"> 仅允许 SSO</label>' +
+    '<label class="row small" for="bind-require"><input type="checkbox" id="bind-require" style="width:auto"> 绑定已有账户需二次校验</label>' +
+    '<div><label class="label" for="issuer">Issuer</label><input class="input" id="issuer" placeholder="https://idp.example.com"></div>' +
+    '<div><label class="label" for="client-id">Client ID</label><input class="input" id="client-id"></div>' +
+    '<div><label class="label" for="client-secret">Client Secret（留空不修改）</label><input class="input" id="client-secret" type="password" autocomplete="new-password"></div>' +
+    '<div><label class="label" for="scopes">Scopes</label><input class="input" id="scopes" value="openid email profile"></div>' +
+    '<div><label class="label" for="allowed-domains">允许邮箱域</label><input class="input" id="allowed-domains" placeholder="example.com"></div>' +
+    '<div><button class="btn" type="button" id="save-oidc">保存 OIDC</button></div></div></section>' +
+    '<section class="card" id="limits"><h2>限额与 ICE</h2><div class="stack">' +
+    '<div class="grid-2"><div><label class="label" for="session-ttl">会话 TTL(ms)</label><input class="input" id="session-ttl" type="number"></div>' +
+    '<div><label class="label" for="conn-limit">并发连接</label><input class="input" id="conn-limit" type="number"></div>' +
+    '<div><label class="label" for="user-rate">用户/分钟</label><input class="input" id="user-rate" type="number"></div>' +
+    '<div><label class="label" for="anon-rate">匿名/分钟</label><input class="input" id="anon-rate" type="number"></div></div>' +
+    '<div><label class="label" for="stun">STUN</label><input class="input" id="stun"></div>' +
+    '<div><label class="label" for="turn">TURN</label><input class="input" id="turn"></div>' +
+    '<div class="grid-2"><div><label class="label" for="turn-user">TURN 用户名</label><input class="input" id="turn-user"></div><div><label class="label" for="turn-pass">TURN 密码</label><input class="input" id="turn-pass" type="password" autocomplete="new-password"></div></div>' +
+    '<div><button class="btn" type="button" id="save-limits">保存限额</button></div></div></section>' +
+    '</div><aside>' + anchorsNav() +
+    card('生效方式', '<p class="muted small" style="margin:0">所有设置写入数据库并立即生效；端口、数据库与初始化密钥仍在环境变量中。</p>') +
+    '</aside></div></main>' +
+    '<script>' +
+    'function $(id){return document.getElementById(id)}' +
+    'function loadSettings(){dshApi("/api/v1/admin/settings").then(function(r){var b=r.body,o=b.oidc||{},l=b.limits||{},i=b.ice||{},s=b.smtp||{},sv=b.server||{},ui=b.ui||{};' +
+    '$("public-url").value=sv.publicUrl||"";$("trusted-proxies").value=(sv.trustedProxyIps||[]).join(",");$("bg-url").value=ui.backgroundUrl||"";' +
+    '$("oidc-enabled").checked=!!o.enabled;$("only-sso").checked=!!o.onlySso;$("bind-require").checked=o.bindRequireVerification!==false;$("issuer").value=o.issuer||"";$("client-id").value=o.clientId||"";$("scopes").value=o.scopes||"openid email profile";$("allowed-domains").value=(o.allowedDomains||[]).join(",");' +
+    '$("session-ttl").value=l.sessionTtlMs||"";$("conn-limit").value=l.userConnectionLimit||"";$("user-rate").value=l.userRatePerMinute||"";$("anon-rate").value=l.anonRatePerMinute||"";' +
+    '$("stun").value=(i.stunUrls||[]).join(",");$("turn").value=(i.turnUrls||[]).join(",");$("turn-user").value=i.turnUsername||"";' +
+    '$("smtp-host").value=s.host||"";$("smtp-port").value=s.port||587;$("smtp-secure").checked=!!s.secure;$("smtp-user").value=s.user||"";$("smtp-from").value=s.from||""})}' +
     '$("save-server").onclick=function(){dshPut("/api/v1/admin/settings",{server:{publicUrl:$("public-url").value.trim(),trustedProxyIps:$("trusted-proxies").value}}).then(function(r){dshToast(r.ok?"已保存":dshErr(r.body.error&&r.body.error.code,r.status),r.ok?"ok":"err")})};' +
     '$("save-ui").onclick=function(){dshPut("/api/v1/admin/settings",{ui:{backgroundUrl:$("bg-url").value.trim()}}).then(function(r){dshToast(r.ok?"已保存，刷新可见":dshErr(r.body.error&&r.body.error.code,r.status),r.ok?"ok":"err")})};' +
     '$("save-oidc").onclick=function(){dshPut("/api/v1/admin/settings",{oidc:{enabled:$("oidc-enabled").checked,onlySso:$("only-sso").checked,bindRequireVerification:$("bind-require").checked,issuer:$("issuer").value.trim(),clientId:$("client-id").value.trim(),clientSecret:$("client-secret").value,scopes:$("scopes").value,allowedDomains:$("allowed-domains").value}}).then(function(r){if(r.ok){$("client-secret").value="";dshToast("已保存","ok")}else dshToast(dshErr(r.body.error&&r.body.error.code,r.status),"err")})};' +
     '$("save-smtp").onclick=function(){dshPut("/api/v1/admin/settings",{smtp:{host:$("smtp-host").value.trim(),port:+$("smtp-port").value,secure:$("smtp-secure").checked,user:$("smtp-user").value,pass:$("smtp-pass").value,from:$("smtp-from").value}}).then(function(r){if(r.ok){$("smtp-pass").value="";dshToast("已保存","ok")}else dshToast(dshErr(r.body.error&&r.body.error.code,r.status),"err")})};' +
     '$("test-smtp").onclick=function(){dshPost("/api/v1/admin/smtp/test",{to:$("smtp-test-to").value.trim()}).then(function(r){dshToast(r.ok?"测试邮件已发送":dshErr(r.body.error&&r.body.error.code,r.status),r.ok?"ok":"err")})};' +
     '$("save-limits").onclick=function(){dshPut("/api/v1/admin/settings",{limits:{sessionTtlMs:+$("session-ttl").value,userConnectionLimit:+$("conn-limit").value,userRatePerMinute:+$("user-rate").value,anonRatePerMinute:+$("anon-rate").value},ice:{stunUrls:$("stun").value,turnUrls:$("turn").value,turnUsername:$("turn-user").value,turnPassword:$("turn-pass").value}}).then(function(r){if(r.ok){$("turn-pass").value="";dshToast("已保存","ok")}else dshToast(dshErr(r.body.error&&r.body.error.code,r.status),"err")})};' +
-    'loadUsers();loadKeys();loadDevices();loadAudit();loadSettings();' +
+    'loadSettings();' +
     '</script>', background, 'console')
 }

@@ -59,6 +59,14 @@ check('command palette markup', homeHtml.includes('id="cmdk"') && homeHtml.inclu
 check('nav icons rendered', homeHtml.includes('class="ico"') && homeHtml.includes('class="navlink'))
 check('active nav marked', homeHtml.includes('aria-current="page"'))
 
+const adminHtml = String((await req('/admin', { headers: { cookie: adminCookie } })).body)
+const settingsRes = await req('/admin/settings', { headers: { cookie: adminCookie } })
+const settingsHtml = String(settingsRes.body)
+check('admin page has section tabs', adminHtml.includes('class="subnav"') && adminHtml.includes('href="/admin/settings"'))
+check('tables start with skeleton rows', adminHtml.includes('class="sk"') && adminHtml.includes('aria-busy="true"'))
+check('admin settings page', settingsRes.status === 200 && settingsHtml.includes('id="server"') && settingsHtml.includes('class="anchors"'))
+check('settings page keeps oidc fields', settingsHtml.includes('id="issuer"') && settingsHtml.includes('id="smtp-host"'))
+
 const created = await req('/api/v1/admin/users', { method: 'POST', headers: { 'content-type': 'application/json', cookie: adminCookie }, body: JSON.stringify({ username: 'alice', password: 'alice-password-123', role: 'user' }) })
 check('admin creates alice', created.status === 201 && typeof created.body.deviceKey === 'string')
 const bob = await req('/api/v1/admin/users', { method: 'POST', headers: { 'content-type': 'application/json', cookie: adminCookie }, body: JSON.stringify({ username: 'bob', password: 'bob-password-123', role: 'user' }) })

@@ -9,7 +9,7 @@ import { loadSettings, type Settings } from './settings.js'
 import { perMinute } from './ratelimit.js'
 import { Runtime } from './runtime.js'
 import { createSmtpMailer, smtpConfigured, type Mailer } from './mailer.js'
-import { accountPage, adminPage, bindPage, forgotPage, homePage, loginPage, registerPage, setupPage } from './pages.js'
+import { accountPage, adminPage, adminSettingsPage, bindPage, forgotPage, homePage, loginPage, registerPage, setupPage } from './pages.js'
 import { buildIceServers, parseIceConfig } from './ice.js'
 
 const REGISTER = z.object({ v: z.literal(1).optional(), device: z.object({
@@ -619,10 +619,11 @@ export function createApp(settings: Settings, deps: { pool?: Pool; mailer?: Mail
       if (!user) return redirect(res, '/login')
       return html(res, 200, accountPage(user.username, user.email ?? '', Boolean(user.oidc_subject), runtime.current.oidc.onlySso, runtime.current.ui.backgroundUrl))
     }
-    if (method === 'GET' && path === '/admin') {
+    if (method === 'GET' && (path === '/admin' || path === '/admin/settings')) {
       const user = await sessionUser(req)
       if (!user) return redirect(res, '/login')
       if (user.role !== 'admin') return redirect(res, '/')
+      if (path === '/admin/settings') return html(res, 200, adminSettingsPage(user.username, runtime.current.ui.backgroundUrl))
       return html(res, 200, adminPage(user.username, runtime.current.ui.backgroundUrl))
     }
 
