@@ -2,7 +2,7 @@
 
 const CSS = [
   // 设计 tokens 对齐 HiDNS：HSL 语义色（AA 校准）+ 8×φ^(n/2) 几何阶梯
-  ':root{--phi:1.618034;--u-1:5px;--u-2:6px;--u-3:8px;--u-4:10px;--u-5:13px;--u-6:16px;--u-7:21px;--u-8:27px;--u-9:34px;--u-10:43px;--u-11:55px;--u-12:70px;--s1:var(--u-3);--s2:var(--u-5);--s3:var(--u-7);--s4:var(--u-9);--radius:8px;--r-sm:6px;--h-control:34px;--h-control-sm:27px;--h-control-lg:43px;--pad-card:var(--u-8);--gap-card:var(--u-6);--gap-section:var(--u-10);',
+  ':root{--phi:1.618034;--phi-cols:1.618fr 1fr;--u-1:5px;--u-2:6px;--u-3:8px;--u-4:10px;--u-5:13px;--u-6:16px;--u-7:21px;--u-8:27px;--u-9:34px;--u-10:43px;--u-11:55px;--u-12:70px;--s1:var(--u-3);--s2:var(--u-5);--s3:var(--u-7);--s4:var(--u-9);--radius:8px;--r-sm:6px;--h-control:34px;--h-control-sm:27px;--h-control-lg:43px;--pad-card:var(--u-8);--gap-card:var(--u-6);--gap-section:var(--u-10);',
   '--bg:0 0% 100%;--surface:0 0% 100%;--surface-2:210 40% 96%;--line:215 22% 84%;--input-line:215 20% 58%;--text:222 47% 11%;--muted:215 20% 40%;--primary:199 89% 35%;--primary-fg:0 0% 100%;--danger:0 72% 45%;--ok:145 63% 30%;--warn:38 92% 32%;--ring:199 89% 35%;--scrim-rgb:255 255 255;--scrim-alpha:.72;--panel-alpha:1;--chrome-alpha:.92;',
   '--shadow:0 10px 30px rgb(16 22 35 / .08);color-scheme:light}',
   '@media (prefers-color-scheme:dark){:root{--bg:222 45% 7%;--surface:222 38% 14%;--surface-2:222 30% 18%;--line:217 28% 26%;--input-line:215 25% 46%;--text:210 40% 96%;--muted:215 20% 70%;--primary:199 89% 55%;--primary-fg:222 45% 7%;--danger:0 63% 50%;--ok:137 55% 55%;--warn:38 92% 60%;--ring:199 89% 55%;--scrim-rgb:8 13 24;--scrim-alpha:.76;--panel-alpha:.98;--shadow:0 18px 50px rgb(0 0 0 / .45);color-scheme:dark}}',
@@ -45,7 +45,7 @@ const CSS = [
   '@media (max-width:640px){.brand .wordmark{display:none}.nav{margin-left:0}}',
   '@media (max-width:520px){.navlink{padding:6px 10px;font-size:13px}.topbar{gap:var(--u-3)}}',
   '.wrap{max-width:1252px;margin:0 auto;padding:var(--u-8) clamp(var(--u-6),3vw,var(--u-9))}',
-  '.grid-phi{display:grid;grid-template-columns:var(--phi)fr 1fr;gap:var(--gap-section);align-items:start}',
+  '.grid-phi{display:grid;grid-template-columns:var(--phi-cols);gap:var(--gap-section);align-items:start}',
   '.grid-phi>*{min-width:0}',
   '@media (max-width:900px){.grid-phi{grid-template-columns:1fr;gap:var(--gap-card)}}',
   '.card{background:hsl(var(--surface)/var(--panel-alpha));border:1px solid hsl(var(--line));border-radius:12px;padding:var(--pad-card);box-shadow:var(--shadow)}',
@@ -79,7 +79,7 @@ const CSS = [
   '.hintbar{max-width:1252px;margin:var(--u-5) auto 0;padding:0 clamp(var(--u-6),3vw,var(--u-9))}',
   '.hintbar:empty{display:none}',
   '.hero{min-height:100dvh;display:grid;place-items:center;padding:var(--u-8)}',
-  '.auth{width:min(1040px,100%);display:grid;grid-template-columns:var(--phi)fr 1fr;gap:clamp(var(--u-6),4vw,var(--u-11));align-items:center}',
+  '.auth{width:min(1040px,100%);display:grid;grid-template-columns:var(--phi-cols);gap:clamp(var(--u-6),4vw,var(--u-11));align-items:center}',
   '@media (max-width:860px){.auth{grid-template-columns:1fr}.auth .pitch{display:none}}',
   '.pitch p{color:hsl(var(--muted));max-width:34ch}',
   '.panel{background:hsl(var(--surface)/var(--panel-alpha));border:1px solid hsl(var(--line));border-radius:12px;padding:clamp(var(--u-7),3vw,var(--u-9));box-shadow:var(--shadow)}',
@@ -105,7 +105,7 @@ const CSS = [
   'body.leaving{opacity:0;transition:opacity .16s ease}',
   '.card{animation:rise .34s ease both}',
   '.card:nth-of-type(2){animation-delay:.04s}.card:nth-of-type(3){animation-delay:.08s}.card:nth-of-type(4){animation-delay:.12s}',
-  '@keyframes rise{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}',
+  '@keyframes rise{from{transform:translateY(8px)}to{transform:none}}',
   'dialog{border:1px solid hsl(var(--line));border-radius:12px;background:hsl(var(--surface));color:hsl(var(--text));padding:var(--u-7);max-width:min(560px,92vw);box-shadow:var(--shadow)}',
   'dialog::backdrop{background:rgb(0 0 0 / .55)}',
   '.subnav{max-width:1252px;margin:0 auto;padding:var(--u-5) clamp(var(--u-6),3vw,var(--u-9)) 0;display:flex;gap:var(--u-2)}',
