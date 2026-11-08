@@ -18,7 +18,7 @@ const CSS = [
   'body{margin:0;font:15px/1.6 ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,"Noto Sans SC",sans-serif;background:hsl(var(--bg));color:hsl(var(--text));-webkit-font-smoothing:antialiased}',
   'body.has-bg{background-image:linear-gradient(180deg,rgb(var(--scrim-rgb)/var(--scrim-alpha)),rgb(var(--scrim-rgb)/calc(var(--scrim-alpha) + .12))),var(--app-bg-image);background-size:cover;background-attachment:fixed;background-position:center}',
   'a{color:hsl(var(--primary));text-decoration:none}a:hover{text-decoration:underline}',
-    'h1,h2,h3{margin:0;font-weight:650;letter-spacing:-.015em;overflow-wrap:anywhere}h1{font-size:clamp(24px,2.6vw,30px)}h2{font-size:19px}h3{font-size:15px}',
+    'h1,h2,h3{margin:0;font-weight:650;letter-spacing:-.015em;overflow-wrap:anywhere}h1{font-size:clamp(21px,2.6vw,30px)}h2{font-size:19px}h3{font-size:15px}',
   '.lead{font-size:clamp(26px,3.4vw,40px);line-height:1.15;font-weight:650;letter-spacing:-.02em;margin:0;overflow-wrap:anywhere}',
   '.mono{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;overflow-wrap:anywhere}',
   '.muted{color:hsl(var(--muted))}.small{font-size:12.5px}',
@@ -35,17 +35,18 @@ const CSS = [
   '.navlink .lbl{line-height:1}',
   '.cmdk-btn{color:hsl(var(--muted))}',
   '.navlink.active{color:hsl(var(--text));background:hsl(var(--surface));font-weight:600;box-shadow:0 1px 2px rgb(0 0 0 / .18)}',
-  '.user{display:flex;align-items:center;gap:var(--u-3)}',
+  '.user{display:flex;align-items:center;gap:var(--u-3);flex:0 0 auto}',
   '.avatar{width:28px;height:28px;border-radius:50%;display:grid;place-items:center;background:linear-gradient(135deg,hsl(var(--primary)),hsl(var(--primary)/.6));color:#fff;font-size:12px;font-weight:700;text-transform:uppercase}',
   '.who{display:flex;align-items:center;gap:6px;flex:0 0 auto;font-size:12.5px;color:hsl(var(--muted))}',
   '.who .acct{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0;max-width:190px}',
   '.who .dev-name{flex:none}',
   '.brand{display:flex;align-items:center;gap:var(--u-3);font-weight:700;letter-spacing:-.02em}',
   '.brand .dot{width:26px;height:26px;border-radius:8px;background:linear-gradient(135deg,hsl(var(--primary)),hsl(var(--primary)/.65));box-shadow:0 6px 18px hsl(var(--primary)/.35)}',
-  '.topbar .spacer{flex:1}',
+  '.topbar .spacer{flex:1 1 auto;min-width:0}',
   '@media (max-width:820px){.who .acct{display:none}}',
   '@media (max-width:640px){.brand .wordmark{display:none}.nav{margin-left:0}}',
-        '@media (max-width:520px){.navlink{padding:6px 8px;font-size:13px}.topbar{gap:6px}.topbar .avatar{display:none}.topbar .cmdk-btn{display:none}.topbar .brand{display:none}.topbar .spacer{min-width:0;flex:0 1 0}@media (max-width:380px){.topbar .who .dev-name{font-size:11px}}}',
+        '@media (max-width:340px){.topbar{gap:4px;padding:0 10px}.topbar .brand{display:none}.navlink{padding:6px 6px}.topbar .btn.sm{padding:0 9px}.topbar .who .dev-name{font-size:10.5px}}',
+  '@media (max-width:520px){.navlink{padding:6px 8px;font-size:13px}.topbar{gap:6px}.topbar .avatar{display:none}.topbar .cmdk-btn{display:none}.topbar .spacer{min-width:0}@media (max-width:380px){.topbar .who .dev-name{font-size:11px}}}',
   '.wrap{max-width:1252px;margin:0 auto;padding:var(--u-8) clamp(var(--u-6),3vw,var(--u-9))}',
   '.grid-phi{display:grid;grid-template-columns:var(--phi-cols);gap:var(--gap-section);align-items:start}',
   '.grid-phi>*{min-width:0}',
@@ -418,7 +419,7 @@ export function accountDevicesPage(username: string, background?: string, device
     'function render(){var q=$("q").value.trim().toLowerCase();var rows=all.filter(function(d){' +
     'if(role!=="all"&&d.role!==role)return false;if(online==="online"&&!d.online)return false;if(online==="offline"&&d.online)return false;' +
     'if(!q)return true;return ((d.name||"")+" "+(d.platform||"")).toLowerCase().indexOf(q)>=0});' +
-    '$("devices").innerHTML=rows.length?rows.map(function(d){return \'<tr><td>\'+dshEsc(d.name)+\'</td><td>\'+dshEsc(d.role)+\'</td><td>\'+dshEsc(d.platform||"—")+\'</td><td class="mono small">\'+dshEsc(d.version||"—")+\'</td><td class="mono small">\'+dshEsc(d.harnessVersion||"—")+\'</td><td>\'+(d.online?\'<span class="badge ok">在线</span>\':\'<span class="badge">离线</span>\')+\'</td><td class="muted small">\'+(d.lastSeenAt?dshEsc(new Date(d.lastSeenAt).toLocaleString()):"—")+\'</td></tr>\'}).join(""):\'<tr><td colspan="7" class="muted">\'+emptyDevices()+\'</td></tr>\'}' +
+    '$("devices").innerHTML=rows.length?rows.map(function(d){return \'<tr><td>\'+dshEsc(d.name)+\'</td><td>\'+(d.role==="host"?"主机":"客户端")+\'</td><td>\'+dshEsc(d.platform||"—")+\'</td><td class="mono small">\'+dshEsc(d.version||"—")+\'</td><td class="mono small">\'+dshEsc(d.harnessVersion||"—")+\'</td><td>\'+(d.online?\'<span class="badge ok">在线</span>\':\'<span class="badge">离线</span>\')+\'</td><td class="muted small">\'+(d.lastSeenAt?dshEsc(new Date(d.lastSeenAt).toLocaleString()):"—")+\'</td></tr>\'}).join(""):\'<tr><td colspan="7" class="muted">\'+emptyDevices()+\'</td></tr>\'}' +
     'dshApi("/api/v1/account/devices").then(function(r){all=r.body.items||[];render()}).catch(function(){$("devices").innerHTML=\'<tr><td colspan="7" class="muted">加载失败，请刷新重试</td></tr>\'})' +
     ';$("q").addEventListener("input",render);' +
     'document.addEventListener("click",function(e){var b=e.target.closest("button.chip");if(!b)return;' +

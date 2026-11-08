@@ -219,8 +219,20 @@ await page.waitForTimeout(200)
 const filtered = (await page.locator('#devices').innerText()).replace(/\s+/g, ' ')
 check('搜索可过滤设备', filtered.includes('Nina 的 Mac') && !filtered.includes('Pixel'), filtered.slice(0, 60))
 await page.fill('#q', '')
+// While no socket is open every device is offline.
+await page.locator('button[data-online=online]').click()
+await page.waitForTimeout(200)
+const onlineEmpty = (await page.locator('#devices').innerText()).replace(/\s+/g, ' ')
+check('在线筛选在没有连接时为空', onlineEmpty.includes('没有匹配的设备'), onlineEmpty.slice(0, 50))
+await page.locator('button[data-online=offline]').click()
+await page.waitForTimeout(200)
+const offlineRows = (await page.locator('#devices').innerText()).replace(/\s+/g, ' ')
+check('离线筛选能看到两台设备', offlineRows.includes('Nina 的 Mac') && offlineRows.includes('Pixel'), offlineRows.slice(0, 60))
+await page.locator('button[data-online=all]').click()
+
 const topbarText = (await page.locator('header.topbar').innerText()).replace(/\s+/g, ' ')
 check('顶栏显示设备用户名', /dev-[a-z0-9]+/.test(topbarText), topbarText.slice(0, 60))
+check('普通用户看不到管理入口', (await page.locator('header.topbar a[href="/admin"]').count()) === 0)
 const devBox = await page.evaluate(() => {
   const el = document.querySelector('.who .dev-name')
   if (!el) return null
@@ -355,6 +367,13 @@ const ssoLogin = await oidcLogin('nina2@example.com')
 check('仅 SSO 下 OIDC 仍可登录', ssoLogin === BASE + '/', ssoLogin)
 const keyUnderSso = await api('/api/v1/auth/device-login', { method: 'POST', body: JSON.stringify({ username: deviceUsername, deviceKey: keysByLabel.Pixel.key, device: clientDev }) })
 check('仅 SSO 下设备用户名 + 密钥可用', keyUnderSso.status === 200, String(keyUnderSso.status))
+// The account page must stay functional with the password card removed.
+const pageErrors = []
+page.on('pageerror', e => pageErrors.push(e.message))
+await page.goto(BASE + '/account', { waitUntil: 'domcontentloaded' })
+const ssoAccount = await page.evaluate(() => ({ passwordCard: document.querySelectorAll('#change-pw').length, sendCode: typeof document.getElementById('send-code')?.onclick }))
+check('onlySso 账户页无密码卡且脚本完好', ssoAccount.passwordCard === 0 && ssoAccount.sendCode === 'function' && pageErrors.length === 0, JSON.stringify({ ...ssoAccount, errors: pageErrors }))
+
 const standardUnderSso = await api('/api/v1/auth/device-login', { method: 'POST', body: JSON.stringify({ username: 'nina', deviceKey: keysByLabel.Pixel.key, device: { ...clientDev, deviceId: 'nina-client-0002' } }) })
 check('仅 SSO 下普通用户名 + 密钥可用', standardUnderSso.status === 200, String(standardUnderSso.status))
 

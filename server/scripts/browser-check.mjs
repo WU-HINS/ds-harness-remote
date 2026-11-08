@@ -128,6 +128,21 @@ check('key table is a keyboard reachable region', await page.evaluate(() => {
   const box = document.querySelector('.table-scroll')
   return Boolean(box && box.getAttribute('tabindex') === '0' && box.getAttribute('role') === 'region')
 }))
+for (const width of [320, 375, 414]) {
+  await page.setViewportSize({ width, height: 800 })
+  await page.goto(BASE + '/account', { waitUntil: 'domcontentloaded' })
+  const fit = await page.evaluate(() => {
+    const dev = document.querySelector('.who .dev-name')?.getBoundingClientRect()
+    const next = document.querySelector('.topbar .icon-btn')?.getBoundingClientRect()
+    const overlap = dev && next ? !(dev.right <= next.left || next.right <= dev.left) : false
+    return { overflow: document.documentElement.scrollWidth - window.innerWidth, overlap }
+  })
+  check('tablet-width topbar ' + width, fit.overflow <= 1 && !fit.overlap, JSON.stringify(fit))
+}
+await page.setViewportSize({ width: 1280, height: 900 })
+await page.goto(BASE + '/account/keys', { waitUntil: 'domcontentloaded' })
+await page.waitForFunction(() => document.querySelectorAll('#keys .sk').length === 0, { timeout: 10000 }).catch(() => {})
+
 const initialKeys = await page.locator('#keys tr').count()
 check('account lists the default key', initialKeys >= 1, 'rows=' + initialKeys)
 await page.fill('#key-label', '客厅 iPad')

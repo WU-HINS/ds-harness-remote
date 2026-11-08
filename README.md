@@ -99,6 +99,10 @@ pnpm build          # protocol + server
 pnpm -r check       # type check
 pnpm test           # 161 assertions on pg-mem, no database needed
 pnpm test:pg        # same suite against real PostgreSQL (needs DATABASE_URL)
+
+> The real-database assertions (`server/tests/pg-smoke.mjs`) are skipped when
+> `DATABASE_URL` is unset, so a green `pnpm test` alone does not cover them.
+> CI sets it explicitly in the `server-postgres` job.
 ```
 
 Layout: `server/src` (HTTP, gateway, store, auth), `server/tests` (smoke suites), `packages/protocol`.
