@@ -24,11 +24,23 @@ const CSS = [
   '.muted{color:hsl(var(--muted))}.small{font-size:12.5px}',
   '.skip{position:absolute;left:-9999px;top:0}.skip:focus{left:12px;top:12px;z-index:99;background:hsl(var(--surface));border:1px solid hsl(var(--line));border-radius:var(--r-sm);padding:8px 12px}',
   ':focus-visible{outline:2px solid hsl(var(--ring));outline-offset:2px}',
-  '.topbar{position:sticky;top:0;z-index:20;display:flex;align-items:center;gap:var(--s2);padding:0 clamp(var(--u-6),3vw,var(--u-9));height:var(--u-11);background:hsl(var(--bg)/var(--chrome-alpha));backdrop-filter:blur(18px);border-bottom:1px solid hsl(var(--line))}',
+  '.topbar{position:sticky;top:0;z-index:20;display:flex;align-items:center;gap:var(--u-4);padding:0 clamp(var(--u-5),2.4vw,var(--u-9));height:63px;background:linear-gradient(180deg,hsl(var(--bg)/calc(var(--chrome-alpha) + .04)),hsl(var(--bg)/var(--chrome-alpha)));backdrop-filter:blur(18px) saturate(1.2);border-bottom:1px solid hsl(var(--line));box-shadow:0 1px 0 hsl(var(--line)/.6),0 8px 24px rgb(0 0 0 / .18)}',
+  '.brand{display:flex;align-items:center;gap:var(--u-3);font-weight:750;letter-spacing:-.03em;font-size:15.5px}',
+  '.brand .dot{width:28px;height:28px;border-radius:9px;background:linear-gradient(135deg,hsl(var(--primary)),hsl(var(--primary)/.55));box-shadow:inset 0 0 0 1px hsl(0 0% 100% / .18),0 6px 16px hsl(var(--primary)/.35)}',
+  '.brand .wordmark em{font-style:normal;color:hsl(var(--muted));font-weight:600}',
+  '.nav{display:flex;align-items:center;gap:2px;padding:3px;margin-left:var(--u-4);border-radius:999px;border:1px solid hsl(var(--line));background:hsl(var(--surface-2)/.65)}',
+  '.navlink{padding:6px 14px;border-radius:999px;font-size:13.5px;color:hsl(var(--muted));line-height:1.2;white-space:nowrap}',
+  '.navlink:hover{color:hsl(var(--text));background:hsl(var(--surface)/.8);text-decoration:none}',
+  '.navlink.active{color:hsl(var(--text));background:hsl(var(--surface));font-weight:600;box-shadow:0 1px 2px rgb(0 0 0 / .18)}',
+  '.user{display:flex;align-items:center;gap:var(--u-3)}',
+  '.avatar{width:28px;height:28px;border-radius:50%;display:grid;place-items:center;background:linear-gradient(135deg,hsl(var(--primary)),hsl(var(--primary)/.6));color:#fff;font-size:12px;font-weight:700;text-transform:uppercase}',
+  '.who{font-size:12.5px;color:hsl(var(--muted));max-width:190px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}',
   '.brand{display:flex;align-items:center;gap:var(--u-3);font-weight:700;letter-spacing:-.02em}',
   '.brand .dot{width:26px;height:26px;border-radius:8px;background:linear-gradient(135deg,hsl(var(--primary)),hsl(var(--primary)/.65));box-shadow:0 6px 18px hsl(var(--primary)/.35)}',
   '.topbar .spacer{flex:1}',
-  '@media (max-width:560px){.topbar{gap:var(--u-2);padding:0 var(--u-4)}.topbar .who{display:none}}',
+  '@media (max-width:820px){.who{display:none}}',
+  '@media (max-width:640px){.brand .wordmark{display:none}.nav{margin-left:0}}',
+  '@media (max-width:520px){.navlink{padding:6px 10px;font-size:13px}.topbar{gap:var(--u-3)}}',
   '.wrap{max-width:1252px;margin:0 auto;padding:var(--u-8) clamp(var(--u-6),3vw,var(--u-9))}',
   '.grid-phi{display:grid;grid-template-columns:var(--phi)fr 1fr;gap:var(--gap-section);align-items:start}',
   '.grid-phi>*{min-width:0}',
@@ -135,13 +147,20 @@ const shell = (title: string, body: string, background?: string, surface: 'publi
   '<title>' + esc(title) + ' · DSH Remote</title><style>' + CSS + '</style>' + THEME +
   '</head><body' + bgStyle(background) + '><div id="hint" class="hintbar" role="status" aria-live="polite"></div>' + body + '</body></html>'
 
+const navlink = (href: string, label: string, active: boolean): string =>
+  '<a class="navlink' + (active ? ' active' : '') + '" href="' + href + '"' + (active ? ' aria-current="page"' : '') + '>' + label + '</a>'
+
 const topbar = (user: string, active: string): string =>
-  '<a class="skip" href="#main">跳到主内容</a><header class="topbar"><div class="brand"><span class="dot"></span>DSH Remote</div>' +
-  '<nav class="row small" aria-label="主导航">' +
-  '<a href="/" class="' + (active === 'home' ? '' : 'muted') + '">概览</a>' +
-  '<a href="/account" class="' + (active === 'account' ? '' : 'muted') + '">我的账户</a>' +
-  '<a href="/admin" class="' + (active === 'admin' ? '' : 'muted') + '">管理</a>' +
-  '</nav><div class="spacer"></div><span class="muted small who">' + esc(user) + '</span>' + themeButton +
+  '<a class="skip" href="#main">跳到主内容</a><header class="topbar">' +
+  '<a class="brand" href="/" aria-label="DSH Remote 首页"><span class="dot"></span><span class="wordmark">DSH <em>Remote</em></span></a>' +
+  '<nav class="nav" aria-label="主导航">' +
+  navlink('/', '概览', active === 'home') +
+  navlink('/account', '账户', active === 'account') +
+  navlink('/admin', '管理', active === 'admin') +
+  '</nav><div class="spacer"></div>' +
+  '<div class="user"><span class="avatar" aria-hidden="true">' + esc(user.slice(0, 1)) + '</span>' +
+  '<span class="who" title="' + attr(user) + '">' + esc(user) + '</span></div>' +
+  themeButton +
   '<form method="post" action="/api/v1/auth/logout" style="margin:0"><button class="btn ghost sm" type="submit">退出</button></form></header>'
 
 const card = (title: string, body: string, extra = ''): string =>
