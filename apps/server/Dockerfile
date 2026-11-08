@@ -35,8 +35,8 @@ WORKDIR /app
 COPY --from=build --chown=node:node /out/ ./
 RUN mkdir /data && chown node:node /data
 USER node
-# Resolve the actual server import graph in the final image, including protocol.
-RUN node --input-type=module -e "await import('./dist/main.js')"
+# Resolve the actual server import graph in the final image (no side effects).
+RUN node --input-type=module -e "await import('./dist/app.js')"
 EXPOSE 8080
 VOLUME ["/data"]
 HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
