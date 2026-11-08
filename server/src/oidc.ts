@@ -16,6 +16,7 @@ interface Discovery {
   token_endpoint: string
   jwks_uri: string
   issuer: string
+  userinfo_endpoint?: string
   token_endpoint_auth_methods_supported?: string[]
 }
 const normalizeIssuer = (value: string) => value.replace(/\/+$/, '')
@@ -95,7 +96,7 @@ export class OidcClient {
       signal: AbortSignal.timeout(10_000),
     })
     if (!response.ok) throw new ApiError('OIDC_TOKEN_EXCHANGE_FAILED', 401)
-    const tokens = await response.json() as { id_token?: string }
+    const tokens = await response.json() as { id_token?: string; access_token?: string }
     if (!tokens.id_token) throw new ApiError('OIDC_TOKEN_EXCHANGE_FAILED', 401)
     const { payload } = await jwtVerify(tokens.id_token, this.jwks!, {
       issuer: this.config.issuer,
@@ -109,7 +110,27 @@ export class OidcClient {
     if ((Array.isArray(audience) && audience.length > 1) || payload.azp !== undefined) {
       if (payload.azp !== this.config.clientId) throw new ApiError('OIDC_INVALID_AZP', 401)
     }
-    return this.claims(payload, normalizeIssuer(this.config.issuer))
+    // A conformant OP keeps email out of the ID token; fetch it from userinfo
+    // instead of assuming every provider mimics the legacy behaviour.
+    const enriched: JWTPayload = { ...payload }
+    if (typeof enriched.email !== 'string' && discovery.userinfo_endpoint && tokens.access_token) {
+      try {
+        const info = await fetch(discovery.userinfo_endpoint, {
+          headers: { authorization: 'Bearer ' + tokens.access_token },
+          signal: AbortSignal.timeout(8000),
+        })
+        if (info.ok) {
+          const claims = await info.json() as Record<string, unknown>
+          // The subject must match, otherwise the response belongs to another token.
+          if (String(claims.sub ?? '') === String(payload.sub ?? '')) {
+            if (typeof claims.email === 'string') enriched.email = claims.email
+            if (claims.email_verified !== undefined) enriched.email_verified = claims.email_verified as never
+            if (typeof claims.name === 'string' && enriched.name === undefined) enriched.name = claims.name
+          }
+        }
+      } catch { /* userinfo is best-effort; the caller reports a missing email */ }
+    }
+    return this.claims(enriched, normalizeIssuer(this.config.issuer))
   }
 
   private claims(payload: JWTPayload, issuer: string) {

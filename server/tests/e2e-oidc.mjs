@@ -14,6 +14,7 @@ const ec = await generateKeyPair('ES256')
 const rsaJwk = { ...(await exportJWK(rsa.publicKey)), kid: 'rsa1', alg: 'RS256', use: 'sig' }
 const ecJwk = { ...(await exportJWK(ec.publicKey)), kid: 'ec1', alg: 'ES256', use: 'sig' }
 const codes = new Map()
+const userinfoTokens = new Map()
 let issuer = ''
 const idp = createServer((req, res) => {
   const url = new URL(req.url, 'http://127.0.0.1')
@@ -21,9 +22,15 @@ const idp = createServer((req, res) => {
   if (url.pathname === '/.well-known/openid-configuration') {
     return send(200, {
       issuer, authorization_endpoint: issuer + '/authorize', token_endpoint: issuer + '/token', jwks_uri: issuer + '/jwks',
+      userinfo_endpoint: issuer + '/userinfo',
     })
   }
   if (url.pathname === '/jwks') return send(200, { keys: [rsaJwk, ecJwk] })
+  if (url.pathname === '/userinfo') {
+    const entry = userinfoTokens.get(String(req.headers.authorization ?? '').replace(/^Bearer /, ''))
+    if (!entry) return send(401, { error: 'invalid_token' })
+    return send(200, { sub: entry.sub, email: entry.email, email_verified: entry.emailVerified })
+  }
   if (url.pathname === '/token') {
     let body = ''
     req.on('data', chunk => { body += chunk })
@@ -32,11 +39,14 @@ const idp = createServer((req, res) => {
       const entry = codes.get(params.get('code') || '')
       if (!entry) return send(400, { error: 'invalid_grant' })
       const key = entry.alg === 'ES256' ? ec : rsa
-      const token = await new SignJWT({ nonce: entry.nonce, email: entry.email, email_verified: entry.emailVerified })
+      // A conformant OP keeps email out of the ID token and serves it from userinfo.
+      const claims = { nonce: entry.nonce, email: entry.email, email_verified: entry.emailVerified }
+      if (entry.userinfoOnly) { delete claims.email; delete claims.email_verified; userinfoTokens.set('at-' + params.get('code'), entry) }
+      const token = await new SignJWT(claims)
         .setProtectedHeader({ alg: entry.alg, kid: entry.alg === 'ES256' ? 'ec1' : 'rsa1' })
         .setIssuer(issuer).setAudience('cid').setSubject(entry.sub)
         .setIssuedAt().setExpirationTime('5m').sign(key.privateKey)
-      send(200, { id_token: token })
+      send(200, { id_token: token, ...(entry.userinfoOnly ? { access_token: 'at-' + params.get('code'), token_type: 'Bearer' } : {}) })
     })
     return
   }
@@ -135,10 +145,16 @@ const code = (sent[sent.length - 1].text.match(/\d{6}/) || [])[0]
 const codeBind = await req('/api/v1/auth/oidc/bind/complete', { method: 'POST', ...json({ ticket: ticket2, mode: 'code', code }) })
 check('15 code binding works under onlySso', codeBind.status === 200, String(codeBind.status))
 
-await req('/api/v1/admin/settings', { method: 'PUT', headers: { 'content-type': 'application/json', cookie: admin }, body: JSON.stringify({ oidc: { onlySso: false } }) })
+await req('/api/v1/admin/settings', { method: 'PUT', headers: { 'content-type': 'application/json', cookie: admin }, body: JSON.stringify({ oidc: { onlySso: false, autoProvision: true } }) })
 const relogin = await req('/api/v1/auth/login', { method: 'POST', ...json({ email: 'bob@example.com', password: 'bob-password-123' }) })
 const unbindAfter = await req('/api/v1/auth/oidc/unbind', { method: 'POST', headers: { cookie: cookieOf(relogin) } })
 check('16 unbind allowed again', unbindAfter.status === 200, String(unbindAfter.status))
+
+// 邮箱只在 userinfo 里返回的合规 OP
+const ui = await oidcFlow({ sub: 'sub-ui', email: 'ui@example.com', emailVerified: true, alg: 'RS256', userinfoOnly: true })
+check('17 email resolved from userinfo', ui.status === 302 && ui.headers.get('location') === '/', ui.headers.get('location') || '')
+const uiAgain = await oidcFlow({ sub: 'sub-ui', email: 'ui@example.com', emailVerified: true, alg: 'ES256', userinfoOnly: true })
+check('18 userinfo path is idempotent', uiAgain.status === 302 && uiAgain.headers.get('location') === '/', uiAgain.headers.get('location') || '')
 
 await app.close()
 idp.close()

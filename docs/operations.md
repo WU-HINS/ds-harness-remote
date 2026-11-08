@@ -81,3 +81,16 @@ CI runs it on a fresh database after the store tests.
 pnpm build
 DATABASE_URL=postgres://dsh:dsh@127.0.0.1:5432/dshproto node server/scripts/protocol-walkthrough.mjs
 ```
+
+## IdP + SMTP walkthrough
+
+`server/scripts/idp-smtp-walkthrough.mjs` starts a real OIDC provider (`oidc-provider`, one
+RS256 client and one ES256 client) and a real SMTP listener, then walks registration codes,
+password reset, first-login provisioning, binding, SSO-only mode and EC-signed ID tokens in a
+headless browser. Its dependencies are optional and installed ad hoc:
+
+```bash
+npm i --no-save oidc-provider smtp-server playwright-core jose
+pnpm build
+DATABASE_URL=postgres://dsh:dsh@127.0.0.1:5432/dshidp node server/scripts/idp-smtp-walkthrough.mjs
+```
