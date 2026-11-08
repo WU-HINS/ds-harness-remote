@@ -65,7 +65,9 @@ check('10 counts are per key', byId(firstKeyId).deviceCount === 1 && byId(key2.b
 
 // 会话令牌不得换设备令牌
 const sessionReg = await req('/api/v1/devices/register', { method: 'POST', headers: { 'content-type': 'application/json', authorization: 'Bearer ' + adminToken }, body: JSON.stringify({ v: 1, device: { deviceId: 'sneaky-device', name: 'sneaky', role: 'host', identityKey: 's'.repeat(32) } }) })
-check('11 web session cannot enrol a device', sessionReg.status === 401, String(sessionReg.status))
+// Compatibility with the original protocol: an account (web) token may enrol a
+// device, exactly like a password acting as a device secret. SSO-only forbids it.
+check('11 account token enrols a device (legacy compat)', sessionReg.status === 200, String(sessionReg.status))
 
 const adminRevoke = await req('/api/v1/account/device-keys/' + firstKeyId, { method: 'DELETE', headers: { cookie: admin } })
 check('11b other accounts cannot revoke this key', [401, 404].includes(adminRevoke.status), String(adminRevoke.status))

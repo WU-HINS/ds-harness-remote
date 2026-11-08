@@ -193,7 +193,10 @@ export function createApp(settings: Settings, deps: { pool?: Pool; mailer?: Mail
   }
 
   async function sessionUser(req: IncomingMessage) {
-    return store.sessionUser(readCookie(req, 'dsh_session'))
+    // Cookie first; the same session token is also accepted as a bearer so the
+    // original ds-harness clients (which call /auth/me with a token) keep working.
+    const token = readCookie(req, 'dsh_session') || bearer(req)
+    return store.sessionUser(token)
   }
   async function requireUser(req: IncomingMessage) {
     const user = await sessionUser(req)
@@ -261,6 +264,9 @@ export function createApp(settings: Settings, deps: { pool?: Pool; mailer?: Mail
     if (method === 'GET' && path === '/setup') {
       return (await store.countUsers()) === 0 ? html(res, 200, setupPage(url.searchParams.get('key') ?? '', origin)) : redirect(res, '/login')
     }
+    // Original clients discover OAuth providers here before falling back to the
+    // legacy per-provider probes; an empty list keeps that path silent.
+    if (method === 'GET' && path === '/api/v1/auth/oauth/providers') return json(res, 200, { items: [] })
     if (method === 'POST' && path === '/api/v1/setup') {
       if (!ctx.anonLimiter.take('setup:' + clientAddress(req, trustedProxies))) throw new ApiError('RATE_LIMITED', 429)
       if ((await store.countUsers()) > 0) throw new ApiError('SETUP_CLOSED', 409)
@@ -366,7 +372,8 @@ export function createApp(settings: Settings, deps: { pool?: Pool; mailer?: Mail
     }
     if (method === 'GET' && path === '/api/v1/auth/me') {
       const user = await requireUser(req)
-      return json(res, 200, { user: { id: user.id, username: user.username, role: user.role }, oidc: Boolean(user.oidc_subject) })
+      // `account`/`isAdmin` keep the shape the original clients parse.
+      return json(res, 200, { account: user.username, isAdmin: user.role === 'admin', user: { id: user.id, username: user.username, role: user.role }, oidc: Boolean(user.oidc_subject) })
     }
 
     // ── 自助注册 / 找回密码（P1）────────────────────────────────────────────
@@ -842,10 +849,17 @@ export function createApp(settings: Settings, deps: { pool?: Pool; mailer?: Mail
       // session must never mint device tokens, otherwise "password cannot be
       // exchanged for a device credential" would be false.
       const ticket = takeTicket(bearer(req))
-      if (!ticket) throw new ApiError('DEVICE_KEY_REQUIRED', 401)
-      const user = { id: ticket.userId, username: '(device-key)', role: 'user' as const }
-      await store.audit('device.registered', user.username, user.id, { deviceId: input.device.deviceId })
-      return json(res, 200, await store.register(user.id, input.device, ticket?.keyId))
+      if (ticket) {
+        await store.audit('device.registered', '(device-key)', ticket.userId, { deviceId: input.device.deviceId })
+        return json(res, 200, await store.register(ticket.userId, input.device, ticket.keyId))
+      }
+      // Compatibility: the original protocol lets an account token enrol a
+      // device. It stays disallowed under SSO-only, exactly like the password
+      // acting as a device secret.
+      const session = runtime.current.oidc.onlySso ? undefined : await sessionUser(req)
+      if (!session) throw new ApiError('DEVICE_KEY_REQUIRED', 401)
+      await store.audit('device.registered_from_account', session.username, session.id, { deviceId: input.device.deviceId })
+      return json(res, 200, await store.register(session.id, input.device))
     }
     // Device keys belong to the account owner: only the owner may list, create
     // or revoke them, and the plaintext can be revealed again at any time.

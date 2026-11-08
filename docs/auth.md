@@ -36,7 +36,9 @@ Each user has one virtual device username (`dev-xxxxxxxx`) and any number of dev
 - `POST /api/v1/auth/device-login` with `{ username, deviceKey, device }` registers and enrols in one step.
 - `POST /api/v1/auth/login` with the device key returns a short-lived registration ticket, which
   `POST /api/v1/devices/register` exchanges for access/refresh tokens.
-- Web sessions can never mint device tokens: registration requires a ticket.
+- A web/account token may enrol a device (`POST /api/v1/devices/register` with an account
+  token), which is what the original clients expect. Under SSO-only this is refused, the
+  same way a password may not act as a device secret.
 - While SSO-only is off, the account password also works as a device secret. Those devices carry no key
   binding, are listed as `(未绑定密钥)`, and are revoked when the password changes.
 
@@ -57,3 +59,19 @@ Revoking a key disconnects and revokes every device enrolled with it. Revocation
 | device login with key | allowed | allowed |
 | unbind OIDC | allowed | `403` |
 | self-registration | allowed | `403` |
+
+## Client compatibility
+
+The original ds-harness clients (`dsh go`, desktop plugin) treat the token returned by
+`POST /api/v1/auth/login` as an account bearer and then enrol devices with it. The server
+keeps that contract, additively:
+
+| Client call | Behaviour |
+|---|---|
+| `GET /api/v1/auth/me` with `Bearer <account token>` | accepted (cookie or bearer) and returns `account`, `isAdmin`, `user` |
+| `POST /api/v1/devices/register` with an account token | accepted, except under SSO-only |
+| `GET /api/v1/auth/oauth/providers` | returns `{ items: [] }` instead of 404 |
+| `GET /health` | returns `{ status: "ok" }` |
+
+Everything added later (OIDC, device keys owned by the user, admin protections) is layered on
+top: no legacy endpoint was removed or repurposed.

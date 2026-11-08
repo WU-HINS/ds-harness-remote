@@ -80,6 +80,9 @@ check('tables start with skeleton rows', adminHtml.includes('class="sk"') && adm
 check('admin settings page', settingsRes.status === 200 && settingsHtml.includes('id="server"') && settingsHtml.includes('class="anchors"'))
 check('settings page keeps oidc fields', settingsHtml.includes('id="issuer"') && settingsHtml.includes('id="smtp-host"'))
 
+const tokenMe = await req('/api/v1/auth/me', { headers: { authorization: 'Bearer ' + adminLogin.body.token } })
+check('account token works as bearer', tokenMe.status === 200 && tokenMe.body.account === 'admin@example.com', String(tokenMe.status) + ' ' + JSON.stringify(tokenMe.body).slice(0, 120))
+
 const created = await req('/api/v1/admin/users', { method: 'POST', headers: { 'content-type': 'application/json', cookie: adminCookie }, body: JSON.stringify({ username: 'alice', password: 'alice-password-123', role: 'user' }) })
 check('admin creates alice', created.status === 201 && created.body.deviceKey === undefined, 'no key handed to the admin')
 const bob = await req('/api/v1/admin/users', { method: 'POST', headers: { 'content-type': 'application/json', cookie: adminCookie }, body: JSON.stringify({ username: 'bob', password: 'bob-password-123', role: 'user' }) })
@@ -107,6 +110,22 @@ const foreignRename = await req('/api/v1/devices/bob-host-1/name', { method: 'PO
 check('cross-tenant read is 404', foreignRead.status === 404, String(foreignRead.status))
 check('cross-tenant presence is 404', foreignPresence.status === 404, String(foreignPresence.status))
 check('cross-tenant rename is 404', foreignRename.status === 404, String(foreignRename.status))
+
+// Legacy clients enrol devices with their account token, without a key ticket.
+const carol = await req('/api/v1/admin/users', { method: 'POST', headers: { 'content-type': 'application/json', cookie: adminCookie }, body: JSON.stringify({ username: 'carol', password: 'carol-password-123', role: 'user' }) })
+const carolLogin = await req('/api/v1/auth/login', { method: 'POST', ...json({ email: 'carol', password: 'carol-password-123' }) })
+const legacyRegister = await req('/api/v1/devices/register', {
+  method: 'POST', headers: { 'content-type': 'application/json', authorization: 'Bearer ' + carolLogin.body.token },
+  body: JSON.stringify({ v: 1, device: { deviceId: 'carol-host-1', name: 'carol host', role: 'host', identityKey: 'c'.repeat(32) } }),
+})
+check('account token can enrol a device', legacyRegister.status === 200 && typeof legacyRegister.body.accessToken === 'string', String(legacyRegister.status))
+await req('/api/v1/admin/settings', { method: 'PUT', headers: { 'content-type': 'application/json', cookie: adminCookie }, body: JSON.stringify({ oidc: { enabled: true, onlySso: true, issuer: 'https://idp.example.com', clientId: 'cid', clientSecret: 'x' } }) })
+const blockedRegister = await req('/api/v1/devices/register', {
+  method: 'POST', headers: { 'content-type': 'application/json', authorization: 'Bearer ' + carolLogin.body.token },
+  body: JSON.stringify({ v: 1, device: { deviceId: 'carol-host-2', name: 'second', role: 'host', identityKey: 'c'.repeat(32) } }),
+})
+check('account enrolment blocked under SSO-only', blockedRegister.status === 401, String(blockedRegister.status))
+await req('/api/v1/admin/settings', { method: 'PUT', headers: { 'content-type': 'application/json', cookie: adminCookie }, body: JSON.stringify({ oidc: { enabled: false, onlySso: false } }) })
 
 const replayTicket = await req('/api/v1/devices/register', {
   method: 'POST', headers: { 'content-type': 'application/json', authorization: 'Bearer ' + 'not-a-ticket' },

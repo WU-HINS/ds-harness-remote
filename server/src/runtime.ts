@@ -122,7 +122,12 @@ export class Runtime {
     if (next.oidc.onlySso && (!next.oidc.enabled || !next.oidc.issuer || !next.oidc.clientId)) {
       throw new Error('仅 OIDC 模式要求先启用并配置 OIDC')
     }
-    await this.store.setSetting(CONFIG_KEY, next)
+    // Never persist the boot-time public origin: it belongs to the process that
+    // happens to be running, not to the deployment. Only an explicit admin save
+    // writes it.
+    const persisted: Partial<RuntimeDoc> = { ...next }
+    if (!patch.server) delete persisted.server
+    await this.store.setSetting(CONFIG_KEY, persisted)
     this.doc = next
     this.client = undefined
     return next
