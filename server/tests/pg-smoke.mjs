@@ -48,6 +48,21 @@ let quota = false
 try { await store.issueEmailCode('quota@example.com', 'e') } catch (e) { quota = e.code === 'EMAIL_QUOTA_EXCEEDED' }
 check('hourly quota enforced on real intervals', quota)
 
+// Two accounts, two devices, one flush window: each row must keep its own
+// versions. A batched UPDATE used to copy the first device's values to all.
+const userB = await store.createUser({ username: 'bob', email: 'bob@example.com', emailVerified: true, password: 'bob-password-123' })
+await store.register(user.user.id, { v: 1, deviceId: 'pg-touch-a', name: 'A', role: 'host', identityKey: 'a'.repeat(32) })
+await store.register(userB.user.id, { v: 1, deviceId: 'pg-touch-b', name: 'B', role: 'client', platform: 'android', identityKey: 'b'.repeat(32) })
+store.touch('pg-touch-a', 'plugin-a', 'harness-a')
+store.touch('pg-touch-b', 'plugin-b', 'harness-b')
+await store.flushTouchNow()
+const rows = await pool.query("SELECT id, version, harness_version FROM devices WHERE id IN ('pg-touch-a','pg-touch-b') ORDER BY id")
+const byId = Object.fromEntries(rows.rows.map(r => [r.id, r]))
+check('per-device versions survive a batched touch',
+  byId['pg-touch-a']?.version === 'plugin-a' && byId['pg-touch-a']?.harness_version === 'harness-a' &&
+  byId['pg-touch-b']?.version === 'plugin-b' && byId['pg-touch-b']?.harness_version === 'harness-b',
+  JSON.stringify(rows.rows))
+
 store.releaseInstanceLease()
 await pool.end()
 console.log(String.fromCharCode(10) + pass + ' passed, ' + fail + ' failed')

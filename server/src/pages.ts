@@ -45,7 +45,7 @@ const CSS = [
   '.topbar .spacer{flex:1}',
   '@media (max-width:820px){.who .acct{display:none}}',
   '@media (max-width:640px){.brand .wordmark{display:none}.nav{margin-left:0}}',
-  '@media (max-width:520px){.navlink{padding:6px 10px;font-size:13px}.topbar{gap:var(--u-3)}.avatar{display:none}.icon-btn{display:none}.topbar .spacer{min-width:var(--u-2)}}',
+    '@media (max-width:520px){.navlink{padding:6px 10px;font-size:13px}.topbar{gap:var(--u-3)}.topbar .avatar{display:none}.topbar .icon-btn{display:none}.topbar .spacer{min-width:var(--u-2)}}',
   '.wrap{max-width:1252px;margin:0 auto;padding:var(--u-8) clamp(var(--u-6),3vw,var(--u-9))}',
   '.grid-phi{display:grid;grid-template-columns:var(--phi-cols);gap:var(--gap-section);align-items:start}',
   '.grid-phi>*{min-width:0}',
@@ -477,7 +477,7 @@ const anchorsNav = (): string =>
   '</nav>'
 
 export function adminPage(username: string, background?: string, deviceUsername = ''): string {
-  return shell('用户与设备', topbar(username, 'admin', deviceUsername) + adminTabs('people') + '<main class="wrap" id="main"><div class="grid-phi"><div>' +
+  return shell('用户与设备', topbar(username, 'admin', deviceUsername, true) + adminTabs('people') + '<main class="wrap" id="main"><div class="grid-phi"><div>' +
     card('用户', table(['邮箱 / 用户名', '设备用户名', '角色', '密钥', '操作'], 'rows', '还没有用户') +
       '<div class="divider"></div><div class="grid-2">' +
       '<div><label class="label" for="nu">新建邮箱</label><input class="input" id="nu" type="email" placeholder="user@example.com" autocomplete="off"></div>' +
@@ -518,7 +518,7 @@ export function adminPage(username: string, background?: string, deviceUsername 
 }
 
 export function adminSettingsPage(username: string, background?: string, deviceUsername = ''): string {
-  return shell('设置', topbar(username, 'admin', deviceUsername) + adminTabs('settings') + '<main class="wrap" id="main"><div class="grid-phi"><div>' +
+  return shell('设置', topbar(username, 'admin', deviceUsername, true) + adminTabs('settings') + '<main class="wrap" id="main"><div class="grid-phi"><div>' +
     '<section class="card" id="server"><h2>服务地址</h2><div class="stack">' +
     '<div><label class="label" for="public-url">公网地址</label><input class="input" id="public-url" placeholder="https://remote.example.com"><span class="small muted">仅 https，留空则按请求推导</span></div>' +
     '<div><label class="label" for="trusted-proxies">额外可信代理</label><input class="input" id="trusted-proxies" placeholder="203.0.113.7, 2001:db8::2"><span class="small muted">内网与回环默认信任</span></div>' +

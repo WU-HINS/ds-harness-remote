@@ -212,6 +212,19 @@ export class Store {
     if (record.expires <= Date.now()) throw new ApiError('TOKEN_EXPIRED', 401)
     return this.get(record.deviceId)
   }
+  /** Flush pending last-seen writes now (tests and graceful shutdown). */
+  async flushTouchNow(): Promise<void> {
+    if (this.touchTimer) { clearTimeout(this.touchTimer); this.touchTimer = undefined }
+    const ids = [...this.touchQueue]
+    this.touchQueue.clear()
+    await Promise.all(ids.map(id => {
+      const cached = this.devices.get(id)
+      return this.pool.query(
+        'UPDATE devices SET last_seen_at = now(), version = coalesce($2, version), harness_version = coalesce($3, harness_version) WHERE id = $1',
+        [id, cached?.descriptor.version ?? null, cached?.descriptor.harnessVersion ?? null],
+      )
+    }))
+  }
   touch(id: string, clientVersion?: string, harnessVersion?: string): void {
     const device = this.devices.get(id)
     if (!device) return
@@ -226,8 +239,15 @@ export class Store {
       const ids = [...this.touchQueue]
       this.touchQueue.clear()
       this.touchTimer = undefined
-      void this.pool.query('UPDATE devices SET last_seen_at = now(), version = coalesce($2, version), harness_version = coalesce($3, harness_version) WHERE id = ANY($1::text[])',
-        [ids, this.devices.get(ids[0]!)?.descriptor.version ?? null, this.devices.get(ids[0]!)?.descriptor.harnessVersion ?? null]).catch(() => undefined)
+      // Each device carries its own versions: a single batched UPDATE used to
+      // write the first device's versions onto every row in the batch.
+      for (const id of ids) {
+        const cached = this.devices.get(id)
+        void this.pool.query(
+          'UPDATE devices SET last_seen_at = now(), version = coalesce($2, version), harness_version = coalesce($3, harness_version) WHERE id = $1',
+          [id, cached?.descriptor.version ?? null, cached?.descriptor.harnessVersion ?? null],
+        ).catch(() => undefined)
+      }
     }, 5000)
     this.touchTimer.unref?.()
   }
@@ -298,7 +318,8 @@ export class Store {
 
   async verifyDeviceCredential(login: string, secret: string, allowStandardUsername: boolean): Promise<{ user: UserRow; keyId: string } | undefined> {
     const found = await this.pool.query(
-      'SELECT * FROM users WHERE device_username = $1' + (allowStandardUsername ? ' OR lower(username) = lower($1)' : ''),
+      'SELECT * FROM users WHERE device_username = $1' + (allowStandardUsername ? ' OR lower(username) = lower($1)' : '') +
+      ' ORDER BY (device_username = $1) DESC LIMIT 1',
       [login])
     const user: UserRow | undefined = found.rows[0]
     if (!user || user.disabled) return undefined

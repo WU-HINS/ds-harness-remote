@@ -229,6 +229,30 @@ const devBox = await page.evaluate(() => {
 })
 check('顶栏设备用户名未被裁剪', Boolean(devBox && devBox.visible && !devBox.clipped), JSON.stringify(devBox))
 
+// Sub-pages stay protected and do not leak into the hub.
+const anonPage = await fetch(BASE + '/account/devices', { redirect: 'manual' })
+const anonApi = await api('/api/v1/account/devices')
+check('未登录访问设备页会跳转', anonPage.status === 302 && (anonPage.headers.get('location') || '').includes('/login'), String(anonPage.status))
+check('未登录访问设备接口返回 401', anonApi.status === 401, String(anonApi.status))
+const hub = await (await fetch(BASE + '/account', { headers: { cookie: ninaSession } })).text()
+check('账户概览不再内嵌列表', !hub.includes('id="keys"') && !hub.includes('id="devices"'))
+
+// Filters actually narrow the rows, not just render.
+await page.goto(BASE + '/account/devices', { waitUntil: 'domcontentloaded' })
+await page.waitForFunction(() => document.querySelectorAll('#devices .sk').length === 0, { timeout: 10000 }).catch(() => {})
+await page.locator('button[data-role=host]').click()
+await page.waitForTimeout(200)
+const hostOnly = (await page.locator('#devices').innerText()).replace(/\s+/g, ' ')
+check('角色筛选只留 Host', hostOnly.includes('Nina 的 Mac') && !hostOnly.includes('Pixel'), hostOnly.slice(0, 60))
+
+// A device name is client-controlled: it must render as text, never as markup.
+const evil = { deviceId: 'nina-host-xss', name: '<img src=x onerror=alert(1)>', role: 'host', platform: 'linux', version: '0.6.4', identityKey: 'nina-xss-identity' }
+await api('/api/v1/auth/device-login', { method: 'POST', body: JSON.stringify({ username: deviceUsername, deviceKey: keysByLabel.Pixel.key, device: evil }) })
+await page.goto(BASE + '/account/devices', { waitUntil: 'domcontentloaded' })
+await page.waitForFunction(() => document.querySelectorAll('#devices .sk').length === 0, { timeout: 10000 }).catch(() => {})
+const injected = await page.evaluate(() => ({ imgs: document.querySelectorAll('#devices img').length, text: document.getElementById('devices').innerText.includes('<img') }))
+check('设备名按文本渲染', injected.imgs === 0 && injected.text === true, JSON.stringify(injected))
+
 // ── 5. control plane ────────────────────────────────────────────────────────
 step('5. 一次真实远程连接（握手 + 双向密文）')
 const host = new Peer('host'); await host.open()
