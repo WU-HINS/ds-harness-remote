@@ -128,7 +128,7 @@ check('key table is a keyboard reachable region', await page.evaluate(() => {
   const box = document.querySelector('.table-scroll')
   return Boolean(box && box.getAttribute('tabindex') === '0' && box.getAttribute('role') === 'region')
 }))
-for (const width of [320, 336, 344, 350, 361, 375, 414]) {
+for (const width of [320, 336, 341, 344, 350, 355, 361, 375, 414, 641, 660]) {
   for (const path of ['/admin', '/account']) {
     await page.setViewportSize({ width, height: 800 })
     await page.goto(BASE + path, { waitUntil: 'domcontentloaded' })

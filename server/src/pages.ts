@@ -44,8 +44,8 @@ const CSS = [
   '.brand .dot{width:26px;height:26px;border-radius:8px;background:linear-gradient(135deg,hsl(var(--primary)),hsl(var(--primary)/.65));box-shadow:0 6px 18px hsl(var(--primary)/.35)}',
   '.topbar .spacer{flex:1 1 auto;min-width:0}',
   '@media (max-width:820px){.who .acct{display:none}}',
-  '@media (max-width:640px){.brand .wordmark{display:none}.nav{margin-left:0}}',
-        '@media (max-width:520px){.navlink{padding:6px 8px;font-size:13px}.topbar{gap:6px}.topbar .avatar{display:none}.topbar .cmdk-btn{display:none}.topbar .spacer{min-width:0}@media (max-width:380px){.topbar .who .dev-name{font-size:11px}}}',
+  '@media (max-width:660px){.brand .wordmark{display:none}.nav{margin-left:0}}',
+        '@media (max-width:520px){.topbar{gap:6px}.topbar .avatar{display:none}.topbar .cmdk-btn{display:none}}',
   '.wrap{max-width:1252px;margin:0 auto;padding:var(--u-8) clamp(var(--u-6),3vw,var(--u-9))}',
   '.grid-phi{display:grid;grid-template-columns:var(--phi-cols);gap:var(--gap-section);align-items:start}',
   '.grid-phi>*{min-width:0}',
@@ -138,7 +138,7 @@ const CSS = [
   '.cmdk-list{max-height:52vh;overflow:auto;padding:var(--u-3)}',
   '.cmdk-item{display:flex;justify-content:space-between;align-items:center;gap:var(--u-4);width:100%;padding:10px var(--u-4);border:0;border-radius:var(--r-sm);background:transparent;color:hsl(var(--text));font:inherit;text-align:left;cursor:pointer}',
   '.cmdk-item:hover,.cmdk-item.active{background:hsl(var(--surface-2))}',
-  '@media (max-width:640px){.navlink .lbl{display:none}.navlink{padding:6px 10px}}',
+  '@media (max-width:660px){.navlink .lbl{display:none}.navlink{padding:6px 10px}}',
   // Last so it wins the cascade: below 360 the bar keeps only the essentials.
   '@media (max-width:374px){.topbar{gap:4px;padding:0 10px}.topbar .brand{display:none}.topbar .navlink{padding:6px 6px}.topbar .btn.sm{padding:0 9px}.topbar .who .dev-name{font-size:10.5px}}',
   '@media (prefers-reduced-motion:reduce){::view-transition-old(root),::view-transition-new(root),.card,body{animation:none!important;transition:none!important}}',
@@ -275,7 +275,7 @@ export function loginPage(oidcEnabled: boolean, error?: string, background?: str
     '<section class="pitch" aria-hidden="true"><div class="brand" style="margin-bottom:18px"><span class="dot"></span>DSH Remote</div>' +
     '<p class="lead">你的 Harness，<br>在哪儿都能用</p>' +
     '<p class="muted">登录后即可管理账号、设备与在线主机。所有业务流量端到端加密，服务器只转发密文。</p></section>' +
-    '<section class="panel"><div class="row" style="justify-content:space-between"><h1 style="font-size:22px">登录</h1>' + themeButton + '</div>' +
+    '<section class="panel"><div class="row" style="justify-content:space-between"><h1 style="font-size:clamp(20px,4.6vw,22px)">登录</h1>' + themeButton + '</div>' +
     '<form method="post" action="/api/v1/auth/login" class="stack" style="margin-top:18px">' +
     '<div><label class="label" for="login-user">邮箱</label><input class="input" id="login-user" name="username" type="email" autocomplete="username" required placeholder="you@example.com"></div>' +
     '<div><label class="label" for="login-pass">密码</label><input class="input" id="login-pass" name="password" type="password" autocomplete="current-password" required placeholder="••••••••"></div>' +
