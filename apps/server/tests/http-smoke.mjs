@@ -1,0 +1,112 @@
+
+import { newDb } from 'pg-mem'
+import { createApp } from './build/app.js'
+import { loadSettings } from './build/settings.js'
+
+let pass = 0, fail = 0
+const check = (n, ok, extra = '') => { ok ? pass++ : fail++; console.log((ok ? 'PASS ' : 'FAIL ') + n + (extra ? ' :: ' + extra : '')) }
+
+const db = newDb({ autoCreateForeignKeyIndices: true })
+const { Pool } = db.adapters.createPg()
+const pool = new Pool()
+
+const make = (env) => createApp(loadSettings({ DSH_SERVER_PORT: '0', DSH_SERVER_HOST: '127.0.0.1', ...env }), { pool })
+const app = make({ DSH_SERVER_PUBLIC_URL: 'http://127.0.0.1:1', DSH_ANON_RATE_PER_MINUTE: '30', DSH_USER_RATE_PER_MINUTE: '200' })
+const { port, setupKey } = await app.start()
+const base = 'http://127.0.0.1:' + port
+
+async function req(path, init = {}) {
+  const response = await fetch(base + path, { redirect: 'manual', ...init })
+  const text = await response.text()
+  let body
+  try { body = JSON.parse(text) } catch { body = text }
+  return { status: response.status, body, headers: response.headers }
+}
+const json = (value) => ({ headers: { 'content-type': 'application/json' }, body: JSON.stringify(value) })
+const cookieOf = (r) => (r.headers.get('set-cookie') || '').split(';')[0]
+
+check('healthz', (await req('/healthz')).status === 200)
+check('ready', (await req('/ready')).status === 200)
+check('setup without key rejected', (await req('/api/v1/setup', { method: 'POST', ...json({ username: 'admin', password: 'admin-password-123' }) })).status === 403)
+const setup = await req('/api/v1/setup', { method: 'POST', ...json({ key: setupKey, username: 'admin', password: 'admin-password-123' }) })
+check('setup with key creates admin', setup.status === 201 && typeof setup.body.deviceKey === 'string')
+check('setup closes afterwards', (await req('/setup')).status === 302)
+check('replaying the setup key is refused', (await req('/api/v1/setup', { method: 'POST', ...json({ key: setupKey, username: 'mallory', password: 'mallory-password-1' }) })).status === 409)
+
+const csrfOrigin = await req('/api/v1/auth/login', { method: 'POST', headers: { 'content-type': 'application/json', origin: 'https://evil.example' }, body: JSON.stringify({ email: 'admin', password: 'x' }) })
+check('cross-origin POST rejected', csrfOrigin.status === 403, String(csrfOrigin.status))
+const csrfFetch = await req('/api/v1/auth/login', { method: 'POST', headers: { 'content-type': 'application/json', 'sec-fetch-site': 'cross-site' }, body: JSON.stringify({ email: 'admin', password: 'x' }) })
+check('cross-site fetch metadata rejected', csrfFetch.status === 403, String(csrfFetch.status))
+
+const badLogin = await req('/api/v1/auth/login', { method: 'POST', ...json({ email: 'admin', password: 'wrong-password' }) })
+check('bad login 401 with envelope', badLogin.status === 401 && badLogin.body.error?.code === 'AUTH_INVALID')
+const adminLogin = await req('/api/v1/auth/login', { method: 'POST', ...json({ email: 'admin', password: 'admin-password-123' }) })
+check('admin login returns client shape', adminLogin.status === 200 && adminLogin.body.account === 'admin' && adminLogin.body.isAdmin === true)
+const adminCookie = cookieOf(adminLogin)
+
+const created = await req('/api/v1/admin/users', { method: 'POST', headers: { 'content-type': 'application/json', cookie: adminCookie }, body: JSON.stringify({ username: 'alice', password: 'alice-password-123', role: 'user' }) })
+check('admin creates alice', created.status === 201 && typeof created.body.deviceKey === 'string')
+const bob = await req('/api/v1/admin/users', { method: 'POST', headers: { 'content-type': 'application/json', cookie: adminCookie }, body: JSON.stringify({ username: 'bob', password: 'bob-password-123', role: 'user' }) })
+check('admin creates bob', bob.status === 201 && typeof bob.body.deviceKey === 'string')
+
+async function deviceFor(username, key, deviceId) {
+  const ticket = await req('/api/v1/auth/login', { method: 'POST', ...json({ username, password: key }) })
+  const registered = await req('/api/v1/devices/register', {
+    method: 'POST', headers: { 'content-type': 'application/json', authorization: 'Bearer ' + ticket.body.token },
+    body: JSON.stringify({ v: 1, device: { deviceId, name: username + ' host', role: 'host', identityKey: (username[0] || 'x').repeat(32) } }),
+  })
+  return { ticket: ticket.body.token, access: registered.body.accessToken, status: registered.status }
+}
+const alice = await deviceFor('alice', created.body.deviceKey, 'alice-host-1')
+const bobDevice = await deviceFor('bob', bob.body.deviceKey, 'bob-host-1')
+check('both tenants registered a device', alice.status === 200 && bobDevice.status === 200)
+
+const aliceAuth = { authorization: 'Bearer ' + alice.access }
+const list = await req('/api/v1/devices', { headers: aliceAuth })
+check('device list contains only own host', list.status === 200 && list.body.items.length === 1 && list.body.items[0].deviceId === 'alice-host-1')
+
+const foreignRead = await req('/api/v1/devices/bob-host-1', { headers: aliceAuth })
+const foreignPresence = await req('/api/v1/devices/bob-host-1/presence', { headers: aliceAuth })
+const foreignRename = await req('/api/v1/devices/bob-host-1/name', { method: 'POST', headers: { 'content-type': 'application/json', ...aliceAuth }, body: JSON.stringify({ name: 'pwned' }) })
+check('cross-tenant read is 404', foreignRead.status === 404, String(foreignRead.status))
+check('cross-tenant presence is 404', foreignPresence.status === 404, String(foreignPresence.status))
+check('cross-tenant rename is 404', foreignRename.status === 404, String(foreignRename.status))
+
+const replayTicket = await req('/api/v1/devices/register', {
+  method: 'POST', headers: { 'content-type': 'application/json', authorization: 'Bearer ' + alice.ticket },
+  body: JSON.stringify({ v: 1, device: { deviceId: 'alice-host-2', name: 'second', role: 'host', identityKey: 'z'.repeat(32) } }),
+})
+check('registration ticket is single use', replayTicket.status === 401, String(replayTicket.status))
+
+const devices = await req('/api/v1/admin/devices', { headers: { cookie: adminCookie } })
+check('admin sees both tenants', devices.status === 200 && new Set(devices.body.items.map(d => d.username)).size >= 2)
+const audit = await req('/api/v1/admin/audit?limit=5', { headers: { cookie: adminCookie } })
+check('admin reads audit log', audit.status === 200 && audit.body.items.length > 0)
+
+const logout = await req('/api/v1/auth/logout', { method: 'POST', headers: { cookie: adminCookie } })
+check('logout succeeds and expires cookie', logout.status === 200 && /Max-Age=0/.test(logout.headers.get('set-cookie') || ''))
+check('old session is dead after logout', (await req('/api/v1/auth/me', { headers: { cookie: adminCookie } })).status === 401)
+check('GET logout is rejected', (await req('/api/v1/auth/logout')).status === 405)
+
+const disable = await req('/api/v1/admin/users/' + created.body.user.id, { method: 'PATCH', headers: { 'content-type': 'application/json', cookie: cookieOf(await req('/api/v1/auth/login', { method: 'POST', ...json({ email: 'admin', password: 'admin-password-123' }) })) }, body: JSON.stringify({ toggle: true }) })
+check('admin can disable a user', disable.status === 200, String(disable.status))
+check('disabled user device token is dead', (await req('/api/v1/me', { headers: aliceAuth })).status === 401)
+
+const httpsApp = make({ DSH_SERVER_PUBLIC_URL: 'https://app.example.com', DSH_ANON_RATE_PER_MINUTE: '30' })
+const httpsStart = await httpsApp.start()
+const secureLogin = await fetch('http://127.0.0.1:' + httpsStart.port + '/api/v1/auth/login', { method: 'POST', redirect: 'manual', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ email: 'bob', password: 'bob-password-123' }) })
+const secureCookie = secureLogin.headers.get('set-cookie') || ''
+check('https deployment sets Secure cookie', /; Secure/.test(secureCookie) && /HttpOnly/.test(secureCookie) && /SameSite=Lax/.test(secureCookie))
+await httpsApp.close()
+
+let limited = false
+for (let i = 0; i < 80; i++) {
+  const r = await req('/api/v1/auth/login', { method: 'POST', ...json({ username: 'nobody', password: 'wrong-password-123' }) })
+  if (r.status === 429) { limited = r.headers.get('retry-after') === '60' || r.status === 429; break }
+}
+check('anonymous rate limit engages', limited)
+
+await app.close()
+console.log(String.fromCharCode(10) + pass + ' passed, ' + fail + ' failed')
+process.exitCode = fail === 0 ? 0 : 1
+

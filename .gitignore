@@ -25,3 +25,6 @@ artifacts/
 
 # Minimal self-hosted Server credentials and local state
 apps/server/data/
+
+# local test build output
+apps/server/.smoke/

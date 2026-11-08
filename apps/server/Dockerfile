@@ -30,13 +30,12 @@ FROM node:22-bookworm-slim AS runtime
 ENV NODE_ENV=production \
     DSH_SERVER_HOST=0.0.0.0 \
     DSH_SERVER_PORT=8080 \
-    DSH_SERVER_DATA_FILE=/data/state.json
 WORKDIR /app
 COPY --from=build --chown=node:node /out/ ./
 RUN mkdir /data && chown node:node /data
 USER node
 # Resolve the actual server import graph in the final image, including protocol.
-RUN node --input-type=module -e "await import('./dist/server.js')"
+RUN node --input-type=module -e "await import('./dist/main.js')"
 EXPOSE 8080
 VOLUME ["/data"]
 HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \

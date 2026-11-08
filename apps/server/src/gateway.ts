@@ -15,7 +15,7 @@ import {
   type RelayPayload,
   type TransportSelectedPayload,
 } from '@dsh-remote/protocol'
-import { ApiError, Store } from './store.js'
+import { ApiError, Store } from './store-pg.js'
 import { Logger, type LogLevel } from './logger.js'
 import { normalizeGatewayOptions, normalizeMaxFramesPerSec, type GatewayTimingOptions } from './config.js'
 
@@ -24,7 +24,7 @@ export interface GatewayOptions extends GatewayTimingOptions {
   logLevel?: LogLevel
   logger?: Logger
   /** Advertise `transport.turn` (and accept TURN credential requests). */
-  turnEnabled?: boolean
+  turnEnabled?: boolean | (() => boolean)
 }
 
 /**
@@ -112,7 +112,7 @@ export class Gateway {
   private wss = new WebSocketServer({ noServer: true, maxPayload: MAX_RELAY_FRAME_BYTES, perMessageDeflate: false })
   private heartbeat: ReturnType<typeof setInterval>
   private closed = false
-  readonly turnEnabled: boolean
+  readonly turnEnabled: boolean | (() => boolean)
   readonly helloTimeoutMs: number
   readonly heartbeatIntervalMs: number
   readonly heartbeatDisconnectMs: number
@@ -131,7 +131,7 @@ export class Gateway {
     this.forceTerminateGraceMs = timing.forceTerminateGraceMs
     this.maxFramesPerSec = normalizeMaxFramesPerSec(options.maxFramesPerSec)
     this.logger = options.logger ?? new Logger('gateway', options.logLevel ?? 'info')
-    this.turnEnabled = options.turnEnabled === true
+    this.turnEnabled = options.turnEnabled ?? false
 
     store.onInvalidate = id => this.disconnect(id, 'AUTH_INVALID')
     server.on('upgrade', (req, socket, head) => {
@@ -140,7 +140,10 @@ export class Gateway {
       // (exactly as before) but only its parsed pathname is ever logged.
       const pathRejected = req.url !== '/ws/v1/connect'
       const originRejected = Boolean(req.headers.origin) && req.headers.origin !== origin
-      if (pathRejected || originRejected || this.wss.clients.size >= 256) {
+      // Unauthenticated sockets get their own budget so an anonymous flood
+      // cannot consume the authenticated capacity.
+      const unauth = Math.max(0, this.wss.clients.size - this.peers.size)
+      if (pathRejected || originRejected || this.wss.clients.size >= 512 || unauth >= 64) {
         this.logger.warn('ws_upgrade_rejected', {
           // Parsed pathname only: the raw URL may carry credentials in its query.
           path: path === '' ? 'unknown' : path,
@@ -299,7 +302,8 @@ export class Gateway {
     return this.peers.has(link.host) && this.peers.has(link.client)
   }
   private supportedCapabilities(): string[] {
-    return SUPPORTED_TRANSPORTS.filter(capability => capability !== 'transport.turn' || this.turnEnabled)
+    const turn = typeof this.turnEnabled === 'function' ? this.turnEnabled() : this.turnEnabled === true
+    return SUPPORTED_TRANSPORTS.filter(capability => capability !== 'transport.turn' || turn)
   }
   private negotiatedCapabilities(offered: readonly string[]): string[] {
     return this.supportedCapabilities().filter(capability => offered.includes(capability))
@@ -417,13 +421,23 @@ export class Gateway {
           const p = frame.payload as HelloPayload
           const device = this.store.authenticate(p.accessToken).descriptor
           if (device.deviceId !== p.deviceId || device.role !== p.role) throw new ApiError('AUTH_INVALID')
+          // Per-user concurrent connection cap (admins are not special here;
+          // the cap protects the process, not a privilege tier).
           if (!p.protocols.includes(1)) throw new ApiError('UNSUPPORTED_VERSION')
           // Re-assert the state: if the deadline fired while credentials were
           // checked, the timeout wins and none of the side effects below run.
           if (state !== 'awaiting_hello') return
+          // Replace our own previous socket before counting, otherwise a user
+          // at the cap can never reconnect.
+          this.disconnect(device.deviceId, 'CONNECTION_REPLACED')
+          const ownerId = this.store.get(device.deviceId).userId
+          let sameUser = 0
+          for (const other of this.peers.values()) {
+            try { if (this.store.get(other.id).userId === ownerId) sameUser += 1 } catch { /* revoked peer still counts */ sameUser += 1 }
+          }
+          if (sameUser >= this.store.connectionLimit) throw new ApiError('RATE_LIMITED', 429)
           state = 'authenticated'
           clearDeadline()
-          this.disconnect(device.deviceId, 'CONNECTION_REPLACED')
           // Keep the negotiated set (what hello.ack advertises), so a link can
           // never coordinate a transport this Server did not offer — e.g. TURN
           // while no TURN deployment is configured.
@@ -513,8 +527,14 @@ export class Gateway {
         this.disconnect(candidateHost.id, 'CONNECTION_FAILED')
       }
       const host = this.peers.get(request.hostDeviceId)
-      if (!host || host.role !== 'host') { this.send(peer, createControlFrame('error', { code: 'HOST_OFFLINE', message: 'Host is offline.', retryable: true })); return }
-      this.store.get(host.id)
+      const clientDevice = this.store.get(peer.id)
+      // Resolve ownership before reporting reachability: a foreign or unknown
+      // host must look exactly like an offline host, never like a 403.
+      const hostDevice = host === undefined ? undefined : (() => { try { return this.store.get(host.id) } catch { return undefined } })()
+      if (!host || host.role !== 'host' || hostDevice === undefined || hostDevice.userId !== clientDevice.userId) {
+        this.send(peer, createControlFrame('error', { code: 'HOST_OFFLINE', message: 'Host is offline.', retryable: true }))
+        return
+      }
       if (!request.preferredTransports.includes('relay') || !peer.capabilities.includes('transport.relay') || !host.capabilities.includes('transport.relay')) throw new ApiError('CAPABILITY_NOT_SUPPORTED')
       // The link coordinates only transports both peers actually advertised;
       // the Host receives the same intersection so it never sees a transport
