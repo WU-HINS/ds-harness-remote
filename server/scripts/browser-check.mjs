@@ -103,9 +103,10 @@ check('create user from UI', true)
 check('admin console has no key card', (await page.locator('#key-label').count()) === 0)
 
 // 8. the owner manages keys on their own account page
-await page.goto(BASE + '/account', { waitUntil: 'domcontentloaded' })
+await page.goto(BASE + '/account/keys', { waitUntil: 'domcontentloaded' })
 await page.waitForFunction(() => document.querySelectorAll('#keys .sk').length === 0, { timeout: 10000 }).catch(() => {})
 check('account page renders', await page.locator('#main').isVisible())
+check('account splits into sub-pages', (await page.locator('.subtab').count()) === 3)
 const initialKeys = await page.locator('#keys tr').count()
 check('account lists the default key', initialKeys >= 1, 'rows=' + initialKeys)
 await page.fill('#key-label', '客厅 iPad')

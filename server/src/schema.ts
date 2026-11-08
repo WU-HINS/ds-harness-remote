@@ -23,6 +23,7 @@ export const SCHEMA_STATEMENTS: readonly string[] = [
   'ALTER TABLE users ADD COLUMN IF NOT EXISTS oidc_issuer text',
   'ALTER TABLE users ADD COLUMN IF NOT EXISTS oidc_subject text',
   'ALTER TABLE devices ADD COLUMN IF NOT EXISTS device_key_id text',
+  'ALTER TABLE devices ADD COLUMN IF NOT EXISTS harness_version text',
   'ALTER TABLE device_tokens ADD COLUMN IF NOT EXISTS recovery_expires timestamptz',
 
   // Indexes: names are stable so IF NOT EXISTS converges.

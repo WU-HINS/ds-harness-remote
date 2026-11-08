@@ -93,7 +93,8 @@ check('28 revoked key still reports zero', byId(firstKeyId).deviceCount === 0)
 const ssoOn = await req('/api/v1/admin/settings', { method: 'PUT', headers: { 'content-type': 'application/json', cookie: admin }, body: JSON.stringify({ oidc: { enabled: true, onlySso: true, issuer: 'https://idp.example.com', clientId: 'cid', clientSecret: 'sekret' } }) })
 check('28 only-SSO enabled', ssoOn.status === 200 && ssoOn.body.oidc.onlySso === true)
 check('28 password login blocked', (await req('/api/v1/auth/login', { method: 'POST', ...json({ username: 'alice', password: 'alice-password-123' }) })).status === 403)
-check('28 standard username blocked for devices', (await req('/api/v1/auth/login', { method: 'POST', ...json({ username: 'alice', password: key2.body.key }) })).status === 403)
+// SSO-only no longer narrows the *username*: the device key is the credential.
+check('28 standard username works with a device key under onlySso', (await req('/api/v1/auth/login', { method: 'POST', ...json({ username: 'alice', password: key2.body.key }) })).status === 200)
 check('28 device username still works', (await req('/api/v1/auth/login', { method: 'POST', ...json({ username: aliceRow.deviceUsername, password: key2.body.key }) })).status === 200)
 
 // 部分更新不应清空配置

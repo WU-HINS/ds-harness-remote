@@ -183,6 +183,7 @@ export class Store {
         descriptor: {
           v: 1, deviceId: row.id, name: row.name, role: row.role,
           ...(row.platform ? { platform: row.platform } : {}),
+          ...(row.harness_version ? { harnessVersion: row.harness_version } : {}),
           ...(row.version ? { version: row.version } : {}),
           identityKey: row.identity_key,
         },
@@ -211,9 +212,13 @@ export class Store {
     if (record.expires <= Date.now()) throw new ApiError('TOKEN_EXPIRED', 401)
     return this.get(record.deviceId)
   }
-  touch(id: string, _clientVersion?: string, _harnessVersion?: string): void {
+  touch(id: string, clientVersion?: string, harnessVersion?: string): void {
     const device = this.devices.get(id)
     if (!device) return
+    // The hello frame carries the real client / harness versions; keep the
+    // cached descriptor in sync so the account page can show them immediately.
+    if (typeof clientVersion === 'string' && clientVersion) device.descriptor.version = clientVersion.slice(0, 64)
+    if (typeof harnessVersion === 'string' && harnessVersion) device.descriptor.harnessVersion = harnessVersion.slice(0, 64)
     device.lastSeenAt = Date.now()
     this.touchQueue.add(id)
     if (this.touchTimer) return
@@ -221,7 +226,8 @@ export class Store {
       const ids = [...this.touchQueue]
       this.touchQueue.clear()
       this.touchTimer = undefined
-      void this.pool.query('UPDATE devices SET last_seen_at = now() WHERE id = ANY($1::text[])', [ids]).catch(() => undefined)
+      void this.pool.query('UPDATE devices SET last_seen_at = now(), version = coalesce($2, version), harness_version = coalesce($3, harness_version) WHERE id = ANY($1::text[])',
+        [ids, this.devices.get(ids[0]!)?.descriptor.version ?? null, this.devices.get(ids[0]!)?.descriptor.harnessVersion ?? null]).catch(() => undefined)
     }, 5000)
     this.touchTimer.unref?.()
   }
@@ -317,12 +323,12 @@ export class Store {
       if (priorRow.revoked) throw new ApiError('DEVICE_REVOKED', 409)
     }
     const written = await this.pool.query(
-      'INSERT INTO devices (id, user_id, name, platform, version, role, identity_key, device_key_id) VALUES ($1,$2,$3,$4,$5,$6,$7,$8) ' +
-      'ON CONFLICT (id) DO UPDATE SET name = EXCLUDED.name, platform = EXCLUDED.platform, version = EXCLUDED.version, ' +
+      'INSERT INTO devices (id, user_id, name, platform, version, harness_version, role, identity_key, device_key_id) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9) ' +
+      'ON CONFLICT (id) DO UPDATE SET name = EXCLUDED.name, platform = EXCLUDED.platform, version = EXCLUDED.version, harness_version = coalesce(EXCLUDED.harness_version, devices.harness_version), ' +
       'device_key_id = COALESCE(EXCLUDED.device_key_id, devices.device_key_id) ' +
       'WHERE devices.revoked = false AND devices.user_id = EXCLUDED.user_id ' +
       'RETURNING id, device_key_id',
-      [id, userId, descriptor.name, descriptor.platform ?? null, descriptor.version ?? null, descriptor.role, descriptor.identityKey, deviceKeyId ?? null])
+      [id, userId, descriptor.name, descriptor.platform ?? null, descriptor.version ?? null, descriptor.harnessVersion ?? null, descriptor.role, descriptor.identityKey, deviceKeyId ?? null])
     if ((written.rowCount ?? 0) === 0) {
       // Revocation is terminal: a revoked device cannot re-enrol with its old key.
       const row = await this.pool.query('SELECT user_id, revoked FROM devices WHERE id = $1', [id])

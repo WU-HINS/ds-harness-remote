@@ -9,7 +9,7 @@ import { loadSettings, type Settings } from './settings.js'
 import { perMinute } from './ratelimit.js'
 import { Runtime } from './runtime.js'
 import { createSmtpMailer, smtpConfigured, type Mailer } from './mailer.js'
-import { accountPage, adminPage, adminSettingsPage, bindPage, forgotPage, homePage, loginPage, registerPage, setupPage } from './pages.js'
+import { accountDevicesPage, accountKeysPage, accountPage, adminPage, adminSettingsPage, bindPage, forgotPage, homePage, loginPage, registerPage, setupPage } from './pages.js'
 import { buildIceServers, parseIceConfig } from './ice.js'
 
 const REGISTER = z.object({ v: z.literal(1).optional(), device: z.object({
@@ -324,8 +324,10 @@ export function createApp(settings: Settings, deps: { pool?: Pool; mailer?: Mail
 
       // 1) Device credentials. Verified against device_keys only — the web
       //    password never authenticates a device and vice versa.
+      // The account name is always accepted when a real device key is presented;
+      // only the password fallback below is gated by SSO-only.
       const device = secret.length >= 16
-        ? await store.verifyDeviceCredential(login, secret, !onlySso)
+        ? await store.verifyDeviceCredential(login, secret, true)
         : undefined
       if (device) {
         const ticket = randomUUID() + '.' + randomUUID()
@@ -362,7 +364,7 @@ export function createApp(settings: Settings, deps: { pool?: Pool; mailer?: Mail
       const username = String(input.username ?? '').trim()
       const deviceKey = String(input.deviceKey ?? '')
       const onlySso = runtime.current.oidc.onlySso
-      const verified = await store.verifyDeviceCredential(username, deviceKey, !onlySso)
+      const verified = await store.verifyDeviceCredential(username, deviceKey, true)
       let userId: string | undefined = verified?.user.id
       let keyId: string | undefined = verified?.keyId
       if (!userId && !onlySso) {
@@ -643,19 +645,23 @@ export function createApp(settings: Settings, deps: { pool?: Pool; mailer?: Mail
     if (method === 'GET' && path === '/') {
       const user = await sessionUser(req)
       if (!user) return redirect(res, '/login')
-      return html(res, 200, homePage(user.username, user.role))
+      return html(res, 200, homePage(user.username, user.role, user.device_username ?? ''))
     }
-    if (method === 'GET' && path === '/account') {
+    if (method === 'GET' && (path === '/account' || path === '/account/devices' || path === '/account/keys')) {
       const user = await sessionUser(req)
       if (!user) return redirect(res, '/login')
-      return html(res, 200, accountPage(user.username, user.email ?? '', Boolean(user.oidc_subject), runtime.current.oidc.onlySso, runtime.current.ui.backgroundUrl))
+      const bg = runtime.current.ui.backgroundUrl
+      const device = user.device_username ?? ''
+      if (path === '/account/devices') return html(res, 200, accountDevicesPage(user.username, bg, device))
+      if (path === '/account/keys') return html(res, 200, accountKeysPage(user.username, bg, device))
+      return html(res, 200, accountPage(user.username, user.email ?? '', Boolean(user.oidc_subject), runtime.current.oidc.onlySso, bg, device))
     }
     if (method === 'GET' && (path === '/admin' || path === '/admin/settings')) {
       const user = await sessionUser(req)
       if (!user) return redirect(res, '/login')
       if (user.role !== 'admin') return redirect(res, '/')
-      if (path === '/admin/settings') return html(res, 200, adminSettingsPage(user.username, runtime.current.ui.backgroundUrl))
-      return html(res, 200, adminPage(user.username, runtime.current.ui.backgroundUrl))
+      if (path === '/admin/settings') return html(res, 200, adminSettingsPage(user.username, runtime.current.ui.backgroundUrl, user.device_username ?? ''))
+      return html(res, 200, adminPage(user.username, runtime.current.ui.backgroundUrl, user.device_username ?? ''))
     }
 
     // ── admin API ───────────────────────────────────────────────────────────

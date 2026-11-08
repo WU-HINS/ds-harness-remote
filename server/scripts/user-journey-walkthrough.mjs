@@ -173,8 +173,10 @@ check('新邮箱可登录', emailLogin.status === 200, String(emailLogin.status)
 // ── 3. device keys ──────────────────────────────────────────────────────────
 step('3. 用户自管设备密钥（创建 / 回显 / 吊销）')
 const ninaSession = cookieOf(await api('/api/v1/auth/login', { method: 'POST', body: JSON.stringify({ email: 'nina2@example.com', password: 'nina-password-456' }) }))
-await page.goto(BASE + '/account', { waitUntil: 'domcontentloaded' })
+await page.goto(BASE + '/account/keys', { waitUntil: 'domcontentloaded' })
 await page.waitForFunction(() => document.querySelectorAll('#keys .sk').length === 0, { timeout: 10000 }).catch(() => {})
+check('账户页拆分为三个子页', (await page.locator('.subtab').count()) === 3)
+check('密钥页有搜索与筛选', (await page.locator('#q').count()) === 1 && (await page.locator('button[data-state]').count()) === 3)
 check('默认密钥已存在', (await page.locator('#keys tr').count()) >= 1)
 await page.fill('#key-label', 'Pixel')
 await page.click('#create-key')
@@ -206,6 +208,19 @@ check('Client 设备接入', clientLogin.status === 200, String(clientLogin.stat
 
 const myDevices = await api('/api/v1/account/devices', { headers: { cookie: ninaSession } })
 check('账户页可见两台设备', (myDevices.body.items || []).length === 2, String((myDevices.body.items || []).length))
+
+await page.goto(BASE + '/account/devices', { waitUntil: 'domcontentloaded' })
+await page.waitForFunction(() => document.querySelectorAll('#devices .sk').length === 0 && document.querySelectorAll('#devices tr').length > 1, { timeout: 10000 }).catch(() => {})
+const deviceText = (await page.locator('#devices').innerText()).replace(/\s+/g, ' ')
+check('设备列表显示系统与版本', deviceText.includes('macos') && deviceText.includes('0.6.4'), deviceText.slice(0, 90))
+check('设备页有搜索与筛选', (await page.locator('#q').count()) === 1 && (await page.locator('button[data-role]').count()) === 3)
+await page.fill('#q', 'Mac')
+await page.waitForTimeout(200)
+const filtered = (await page.locator('#devices').innerText()).replace(/\s+/g, ' ')
+check('搜索可过滤设备', filtered.includes('Nina 的 Mac') && !filtered.includes('Pixel'), filtered.slice(0, 60))
+await page.fill('#q', '')
+const topbarText = (await page.locator('header.topbar').innerText()).replace(/\s+/g, ' ')
+check('顶栏显示设备用户名', /dev-[a-z0-9]+/.test(topbarText), topbarText.slice(0, 60))
 
 // ── 5. control plane ────────────────────────────────────────────────────────
 step('5. 一次真实远程连接（握手 + 双向密文）')
@@ -299,7 +314,9 @@ await ctx.clearCookies()
 const ssoLogin = await oidcLogin('nina2@example.com')
 check('仅 SSO 下 OIDC 仍可登录', ssoLogin === BASE + '/', ssoLogin)
 const keyUnderSso = await api('/api/v1/auth/device-login', { method: 'POST', body: JSON.stringify({ username: deviceUsername, deviceKey: keysByLabel.Pixel.key, device: clientDev }) })
-check('仅 SSO 下设备密钥仍可用', keyUnderSso.status === 200, String(keyUnderSso.status))
+check('仅 SSO 下设备用户名 + 密钥可用', keyUnderSso.status === 200, String(keyUnderSso.status))
+const standardUnderSso = await api('/api/v1/auth/device-login', { method: 'POST', body: JSON.stringify({ username: 'nina', deviceKey: keysByLabel.Pixel.key, device: { ...clientDev, deviceId: 'nina-client-0002' } }) })
+check('仅 SSO 下普通用户名 + 密钥可用', standardUnderSso.status === 200, String(standardUnderSso.status))
 
 // ── 10. revoke key + delete account ────────────────────────────────────────
 step('10. 吊销密钥与删除账户')
