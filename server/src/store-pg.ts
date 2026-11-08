@@ -466,7 +466,10 @@ export class Store {
       await client.query('BEGIN')
       // Portable mutex: the primary key makes exactly one concurrent setup win.
       try {
-        await client.query('INSERT INTO setup_lock (id) VALUES (1)')
+        // The unique row is the tie-breaker: a concurrent bootstrap loses cleanly
+      // instead of racing the users count and surfacing a constraint error.
+      const lock = await client.query('INSERT INTO setup_lock (id) VALUES (1) ON CONFLICT (id) DO NOTHING')
+      if ((lock.rowCount ?? 0) === 0) { await client.query('ROLLBACK'); throw new ApiError('SETUP_CLOSED', 409) }
       } catch {
         await client.query('ROLLBACK')
         throw new ApiError('SETUP_CLOSED', 409)

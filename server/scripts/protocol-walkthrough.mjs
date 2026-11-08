@@ -94,14 +94,19 @@ const enrol = async (deviceUsername, key, device) => {
 }
 
 // Both peers belong to the same account: a host and a client are two devices
-// of one user, each bound to its own device key.
-const secondKey = await api('/api/v1/admin/users/' + bobId + '/device-keys', { method: 'POST', headers: { cookie: session }, body: JSON.stringify({ label: 'Pixel' }) })
+// of one user, each bound to its own device key. Keys are minted by the owner.
+const bobLogin = await api('/api/v1/auth/login', { method: 'POST', body: JSON.stringify({ username: 'bob@example.com', password: 'bob-password-123' }) })
+const bobCookie = (bobLogin.headers.get('set-cookie') ?? '').split(';')[0]
+const bobKeys = await api('/api/v1/account/device-keys', { headers: { cookie: bobCookie } })
+const defaultKey = bobKeys.body.keys.find(k => k.key && !k.revoked)
+check('owner can read their own key', bobKeys.status === 200 && Boolean(defaultKey?.key), String(bobKeys.status))
+const secondKey = await api('/api/v1/account/device-keys', { method: 'POST', headers: { cookie: bobCookie }, body: JSON.stringify({ label: 'Pixel' }) })
 check('second device key issued', secondKey.status === 201 && Boolean(secondKey.body.key), String(secondKey.status))
 
 const hostDevice = { deviceId: 'host-device-0001', name: 'DSH Desktop', role: 'host', platform: 'linux', version: '0.6.4', identityKey: 'host-identity-key-0001' }
 const clientDevice = { deviceId: 'client-device-0001', name: 'Pixel', role: 'client', platform: 'android', version: '0.6.4', identityKey: 'client-identity-key-0001' }
 
-const hostTokens = await enrol(bobDeviceName, bobKey, hostDevice)
+const hostTokens = await enrol(bobDeviceName, defaultKey.key, hostDevice)
 const clientTokens = await enrol(bobDeviceName, secondKey.body.key, clientDevice)
 check('host enrolled', Boolean(hostTokens.accessToken))
 check('client enrolled', Boolean(clientTokens.accessToken))
@@ -168,7 +173,8 @@ check('presence reports the host online', presence.status === 200 && presence.bo
 
 const other = await api('/api/v1/admin/users', { method: 'POST', headers: { cookie: session }, body: JSON.stringify({ username: 'carol@example.com', password: 'carol-password-123', role: 'user' }) })
 const carolName = (await api('/api/v1/admin/users', { headers: { cookie: session } })).body.users.find(u => u.id === other.body.user.id).deviceUsername
-const carolTokens = await enrol(carolName, other.body.deviceKey, { deviceId: 'client-device-0002', name: 'iPad', role: 'client', identityKey: 'carol-identity-key-0001' })
+// With SSO optional, a user's own password still works as a device secret.
+const carolTokens = await enrol('carol@example.com', 'carol-password-123', { deviceId: 'client-device-0002', name: 'iPad', role: 'client', identityKey: 'carol-identity-key-0001' })
 const carol = new Peer('carol'); await carol.open()
 carol.send('hello', { role: 'client', deviceId: 'client-device-0002', accessToken: carolTokens.accessToken, protocols: [1], capabilities: ['transport.relay'], clientVersion: '0.6.4' })
 await carol.next('hello.ack')
@@ -188,10 +194,13 @@ check('refresh replay recovers the same successor', replay.status === 200 && rep
 const bogus = await api('/api/v1/auth/refresh', { method: 'POST', body: JSON.stringify({ deviceId: clientDevice.deviceId, refreshToken: 'not-a-real-refresh-token' }) })
 check('unknown refresh token rejected', bogus.status === 401, String(bogus.status))
 
-const keys = await api('/api/v1/admin/users/' + bobId + '/device-keys', { headers: { cookie: session } })
+// The owner revokes their own key; the administrator has no access to it.
+const keys = await api('/api/v1/account/device-keys', { headers: { cookie: bobCookie } })
 const clientKeyId = keys.body.keys.find(k => k.label === 'Pixel' && !k.revoked)?.id
 check('client key identified by label', Boolean(clientKeyId))
-const revoke = await api('/api/v1/admin/device-keys/' + clientKeyId, { method: 'DELETE', headers: { cookie: session } })
+const adminKeyLookup = await api('/api/v1/admin/users/' + bobId + '/device-keys', { headers: { cookie: session } })
+check('admin has no key access', adminKeyLookup.status === 404, String(adminKeyLookup.status))
+const revoke = await api('/api/v1/account/device-keys/' + clientKeyId, { method: 'DELETE', headers: { cookie: bobCookie } })
 check('device key revoked', revoke.status === 200, String(revoke.status))
 const clientClosed = await Promise.race([client.closedPromise, new Promise(r => setTimeout(() => r(null), 5000))])
 check('revoked client socket closed', clientClosed !== null && clientClosed.code === 4001, clientClosed ? String(clientClosed.code) : 'still open')
