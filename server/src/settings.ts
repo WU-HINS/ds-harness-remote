@@ -1,4 +1,5 @@
 export interface Settings {
+  publicUrlExplicit: boolean
   port: number
   host: string
   publicUrl: URL
@@ -47,6 +48,7 @@ export function loadSettings(env: NodeJS.ProcessEnv = process.env): Settings {
       }
     : undefined
   return {
+    publicUrlExplicit: typeof env.DSH_SERVER_PUBLIC_URL === 'string' && env.DSH_SERVER_PUBLIC_URL.trim() !== '',
     port: int(env.DSH_SERVER_PORT, 8080, 0, 65535), // 0 = ephemeral, used by embedded/tests
     host: env.DSH_SERVER_HOST ?? '0.0.0.0',
     publicUrl,

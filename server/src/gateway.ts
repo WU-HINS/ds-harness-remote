@@ -120,7 +120,7 @@ export class Gateway {
   readonly maxFramesPerSec: number
   readonly logger: Logger
 
-  constructor(server: Server, private store: Store, origin: string, options: GatewayOptions = {}) {
+  constructor(server: Server, private store: Store, origin: string | (() => string), options: GatewayOptions = {}) {
     // One normalization path for CLI and programmatic callers: NaN, Infinity,
     // negatives and out-of-range values degrade to documented defaults instead
     // of becoming 1ms timers.
@@ -139,7 +139,8 @@ export class Gateway {
       // The route still requires an exact match: a query string is rejected
       // (exactly as before) but only its parsed pathname is ever logged.
       const pathRejected = req.url !== '/ws/v1/connect'
-      const originRejected = Boolean(req.headers.origin) && req.headers.origin !== origin
+      const expectedOrigin = typeof origin === 'function' ? origin() : origin
+      const originRejected = Boolean(req.headers.origin) && expectedOrigin !== '' && req.headers.origin !== expectedOrigin
       // Unauthenticated sockets get their own budget so an anonymous flood
       // cannot consume the authenticated capacity.
       const unauth = Math.max(0, this.wss.clients.size - this.peers.size)

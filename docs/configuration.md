@@ -11,13 +11,35 @@ Two layers:
 | Variable | Default | Notes |
 |---|---|---|
 | `DATABASE_URL` | — | required, PostgreSQL 13+ |
-| `DSH_SERVER_PUBLIC_URL` | `http://localhost:8080` | bare origin only; drives cookies, OIDC redirect URI, origin checks |
+| `DSH_SERVER_PUBLIC_URL` | unset | optional boot default for the public origin. Prefer setting it on `/setup` or in the admin console — the runtime value wins |
 | `DSH_SERVER_PORT` | `8080` | `0` picks an ephemeral port (tests) |
 | `DSH_SERVER_HOST` | `0.0.0.0` | bind address |
-| `DSH_SERVER_TRUSTED_PROXY_IPS` | empty | comma-separated peer IPs allowed to send `X-Forwarded-For`; must contain exactly one address per request |
+| `DSH_SERVER_TRUSTED_PROXY_IPS` | empty | extra public peers allowed to send client-IP headers. Loopback and private ranges are **already trusted** |
 | `DSH_SETUP_KEY` | random | one-time key for `/setup`; printed at boot when generated |
 | `DSH_BREAK_GLASS_PASSWORD` | unset | set to `1` to keep password login usable in SSO-only mode |
 | `DSH_SERVER_LOG_LEVEL` | `info` | `debug`/`info`/`warn`/`error`/`silent` |
+
+## Public origin (runtime-editable)
+
+`server.publicUrl` in the admin console controls cookies, OIDC redirect URIs and origin checks.
+It must be an `https://` origin (plain `http` is accepted only for `localhost`).
+
+- Set it on the `/setup` page (prefilled from the request) or later under **服务地址** in the console.
+- When empty and `DSH_SERVER_PUBLIC_URL` is unset, the server derives the origin from the request
+  (`X-Forwarded-Proto`/`Host` from trusted peers, otherwise the `Host` header) so first-run works
+  before the domain is known. Set it explicitly for production.
+
+## Client IP
+
+Rate limiting and audit use the client address resolved as:
+
+1. if the TCP peer is loopback or in a private range (10/8, 172.16/12, 192.168/16, 127/8, 169.254/16,
+   `::1`, `fc00::/7`, `fe80::/10`), or listed in `server.trustedProxyIps`, trust one `X-Real-IP`
+   header, then one `X-Forwarded-For` value;
+2. otherwise use the TCP peer.
+
+Comma-separated or repeated headers are ignored rather than guessed. This means a proxy on the same
+host or LAN works with no configuration; a proxy on a public IP must be listed.
 
 ## Sessions and limits (runtime-editable)
 

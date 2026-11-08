@@ -1,4 +1,5 @@
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http'
+import { isIP } from 'node:net'
 import { randomUUID } from 'node:crypto'
 import { Pool } from 'pg'
 import { z } from 'zod'
@@ -57,20 +58,48 @@ function html(res: ServerResponse, status: number, value: string): void {
   res.writeHead(status, { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'no-store' })
   res.end(value)
 }
-function clientAddress(req: IncomingMessage, trusted: ReadonlySet<string>): string {
-  const peer = (req.socket.remoteAddress ?? '').replace(/^::ffff:/, '')
-  if (!trusted.has(peer)) return peer
+function normalizeAddress(value: string | undefined): string {
+  return (value ?? '').replace(/^::ffff:/, '')
+}
+
+/** Loopback, RFC1918, link-local and unique-local IPv6. */
+export function isPrivateAddress(ip: string): boolean {
+  if (ip === '' ) return false
+  if (ip === '::1' || ip === '::') return true
+  if (ip.startsWith('fe80:') || ip.startsWith('fc') || ip.startsWith('fd')) return true
+  const parts = /^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/.exec(ip)
+  if (!parts) return false
+  const a = Number(parts[1]); const b = Number(parts[2])
+  return a === 10 || a === 127 || (a === 172 && b >= 16 && b <= 31) || (a === 192 && b === 168) || (a === 169 && b === 254)
+}
+
+function singleHeader(req: IncomingMessage, name: string): string | undefined {
   let value: string | undefined
   let count = 0
   for (let i = 0; i + 1 < req.rawHeaders.length; i += 2) {
-    if (req.rawHeaders[i]!.toLowerCase() !== 'x-forwarded-for') continue
+    if (req.rawHeaders[i]!.toLowerCase() !== name) continue
     count += 1
     value = req.rawHeaders[i + 1]
   }
-  // Exactly one header with one literal IP; anything else falls back to the peer.
-  if (count !== 1 || value === undefined || value.includes(',')) return peer
+  // Exactly one header; comma-separated lists are rejected rather than guessed.
+  if (count !== 1 || value === undefined) return undefined
   const trimmed = value.trim()
-  return trimmed.length > 0 ? trimmed : peer
+  return trimmed.includes(',') ? undefined : trimmed
+}
+
+/**
+ * Client address for rate limiting. Loopback and private peers are trusted by
+ * default (that is what a reverse proxy on the same host or LAN looks like);
+ * public peers must be listed explicitly.
+ */
+export function clientAddress(req: IncomingMessage, trusted: ReadonlySet<string>): string {
+  const peer = normalizeAddress(req.socket.remoteAddress)
+  if (!trusted.has(peer) && !isPrivateAddress(peer)) return peer
+  const real = singleHeader(req, 'x-real-ip')
+  if (real && isIP(real)) return normalizeAddress(real)
+  const forwarded = singleHeader(req, 'x-forwarded-for')
+  if (forwarded && isIP(forwarded)) return normalizeAddress(forwarded)
+  return peer
 }
 function isForm(req: IncomingMessage): boolean {
   return String(req.headers['content-type'] ?? '').includes('application/x-www-form-urlencoded')
@@ -95,7 +124,7 @@ export function createApp(settings: Settings, deps: { pool?: Pool; mailer?: Mail
   let listening = false
   const store = new Store(pool)
   const server = createServer({ requestTimeout: 30_000, headersTimeout: 15_000 })
-  const gateway = new Gateway(server, store as any, settings.publicUrl.origin, { turnEnabled: () => Boolean(runtime.current.ice.turnUrls.length) })
+  const gateway = new Gateway(server, store as any, () => runtime.current.server.publicUrl || (settings.publicUrlExplicit ? settings.publicUrl.origin : ''), { turnEnabled: () => Boolean(runtime.current.ice.turnUrls.length) })
   const runtime = new Runtime(store, settings)
   let cachedMailer: { key: string; mailer: Mailer } | undefined
   const mailer = (): Mailer | undefined => {
@@ -119,22 +148,36 @@ export function createApp(settings: Settings, deps: { pool?: Pool; mailer?: Mail
     userLimiter: perMinute(settings.userRatePerMinute),
     anonLimiter: perMinute(settings.anonRatePerMinute),
   }
-  const secure = settings.publicUrl.protocol === 'https:'
   const membershipOf = (userId: string) => 'user:' + digest(userId).slice(0, 16)
+  /** Effective public origin: runtime setting, boot env, or the request itself. */
+  const originFor = (req: IncomingMessage): string => {
+    const configured = runtime.current.server.publicUrl
+    if (configured) return configured
+    if (settings.publicUrlExplicit) return settings.publicUrl.origin
+    const peer = normalizeAddress(req.socket.remoteAddress)
+    const trusted = trustedProxies.has(peer) || isPrivateAddress(peer)
+    const proto = trusted ? singleHeader(req, 'x-forwarded-proto') : undefined
+    const host = (trusted ? singleHeader(req, 'x-forwarded-host') : undefined) ?? req.headers.host ?? 'localhost'
+    return (proto === 'https' ? 'https' : 'http') + '://' + host
+  }
   // Emergency escape hatch: DSH_BREAK_GLASS_PASSWORD=1 keeps password login
   // usable even in SSO-only mode. Intended for lockout recovery only.
   const breakGlass = process.env.DSH_BREAK_GLASS_PASSWORD === '1'
   type OidcClaims = { issuer: string; subject: string; email?: string; emailVerified: boolean; name?: string }
   const oidcPending = new Map<string, { claims: OidcClaims; userId: string; expires: number }>()
-  const finishOidc = (res: ServerResponse, user: { id: string; username: string }) => {
+  const finishOidc = (res: ServerResponse, user: { id: string; username: string }, origin: string) => {
     void store.audit('oidc.success', user.username, user.id)
     const ttl = runtime.limits.sessionTtlMs
     return (async () => {
       const session = await store.createSession(user.id, ttl)
-      return redirect(res, '/', { 'set-cookie': cookie('dsh_session', session.token, ttl, secure) })
+      return redirect(res, '/', { 'set-cookie': cookie('dsh_session', session.token, ttl, origin.startsWith('https:')) })
     })()
   }
   const trustedProxies = new Set(settings.trustedProxyIps)
+  const syncTrustedProxies = (): void => {
+    trustedProxies.clear()
+    for (const ip of runtime.current.server.trustedProxyIps) trustedProxies.add(ip)
+  }
   /** Device-key logins get a short-lived ticket that may only register a device. */
   const registerTickets = new Map<string, { userId: string; keyId?: string; expires: number }>()
   function takeTicket(value: string): { userId: string; keyId?: string } | undefined {
@@ -168,7 +211,9 @@ export function createApp(settings: Settings, deps: { pool?: Pool; mailer?: Mail
   }
 
   async function route(req: IncomingMessage, res: ServerResponse): Promise<void> {
-    const url = new URL(req.url ?? '/', settings.publicUrl)
+    const origin = originFor(req)
+    const secure = origin.startsWith('https:')
+    const url = new URL(req.url ?? '/', origin)
     const path = url.pathname
     const method = req.method ?? 'GET'
     res.setHeader('X-Content-Type-Options', 'nosniff')
@@ -177,7 +222,7 @@ export function createApp(settings: Settings, deps: { pool?: Pool; mailer?: Mail
     res.setHeader('Cache-Control', 'no-store')
 
     const isCallback = method === 'GET' && path === '/api/v1/auth/oidc/callback'
-    if (req.headers.origin && req.headers.origin !== settings.publicUrl.origin) throw new ApiError('AUTH_INVALID', 403)
+    if (req.headers.origin && req.headers.origin !== origin) throw new ApiError('AUTH_INVALID', 403)
     if (!isCallback && req.headers['sec-fetch-site'] === 'cross-site') throw new ApiError('AUTH_INVALID', 403)
 
     if (method === 'GET' && (path === '/healthz' || path === '/health')) return json(res, 200, { status: 'ok' })
@@ -188,7 +233,7 @@ export function createApp(settings: Settings, deps: { pool?: Pool; mailer?: Mail
 
     // ── setup ───────────────────────────────────────────────────────────────
     if (method === 'GET' && path === '/setup') {
-      return (await store.countUsers()) === 0 ? html(res, 200, setupPage(url.searchParams.get('key') ?? '')) : redirect(res, '/login')
+      return (await store.countUsers()) === 0 ? html(res, 200, setupPage(url.searchParams.get('key') ?? '', origin)) : redirect(res, '/login')
     }
     if (method === 'POST' && path === '/api/v1/setup') {
       if (!ctx.anonLimiter.take('setup:' + clientAddress(req, trustedProxies))) throw new ApiError('RATE_LIMITED', 429)
@@ -199,6 +244,11 @@ export function createApp(settings: Settings, deps: { pool?: Pool; mailer?: Mail
       if (username.length < 3 || password.length < 12) throw new ApiError('INVALID_MESSAGE', 400)
       const provided = String(input.key ?? url.searchParams.get('key') ?? '')
       if (!(await store.peekSetupKey(provided))) throw new ApiError('SETUP_KEY_INVALID', 403)
+      const requestedOrigin = String(input.publicUrl ?? '').trim()
+      if (requestedOrigin) {
+        try { await runtime.update({ server: { publicUrl: requestedOrigin, trustedProxyIps: runtime.current.server.trustedProxyIps } }) }
+        catch (error) { throw new ApiError('INVALID_PUBLIC_URL', 400) }
+      }
       const { user, deviceKey } = await store.createFirstAdmin(username, password)
       await store.consumeSetupKey(provided)
       await store.audit('setup.admin_created', username, user.id)
@@ -209,7 +259,7 @@ export function createApp(settings: Settings, deps: { pool?: Pool; mailer?: Mail
     }
 
     // ── login ───────────────────────────────────────────────────────────────
-    if (method === 'GET' && path === '/login') return html(res, 200, loginPage(Boolean(runtime.oidcClient()), undefined, runtime.current.ui.backgroundUrl))
+    if (method === 'GET' && path === '/login') return html(res, 200, loginPage(Boolean(runtime.oidcClient(origin)), undefined, runtime.current.ui.backgroundUrl))
     if (method === 'GET' && path === '/register') return html(res, 200, registerPage(runtime.current.oidc.onlySso, runtime.current.ui.backgroundUrl))
     if (method === 'GET' && path === '/forgot') return html(res, 200, forgotPage(runtime.current.oidc.onlySso, runtime.current.ui.backgroundUrl))
     if (method === 'POST' && path === '/api/v1/auth/login') {
@@ -413,7 +463,7 @@ export function createApp(settings: Settings, deps: { pool?: Pool; mailer?: Mail
     }
 
     // ── OIDC ────────────────────────────────────────────────────────────────
-    const oidc = runtime.oidcClient()
+    const oidc = runtime.oidcClient(origin)
     if (oidc && method === 'GET' && path === '/api/v1/auth/oidc/start') {
       const { url: target, state } = await oidc.authorizationUrl()
       res.setHeader('Set-Cookie', 'dsh_oidc_state=' + state + '; Path=/api/v1/auth/oidc; HttpOnly; SameSite=Lax; Max-Age=600' + (secure ? '; Secure' : ''))
@@ -441,7 +491,7 @@ export function createApp(settings: Settings, deps: { pool?: Pool; mailer?: Mail
       }
 
       const bySub = await store.findUserByOidc(claims.issuer, claims.subject)
-      if (bySub) return finishOidc(res, bySub)
+      if (bySub) return finishOidc(res, bySub, origin)
 
       if (!claims.email || !claims.emailVerified) {
         await store.audit('oidc.rejected', undefined, undefined, { reason: 'email-unverified' })
@@ -463,7 +513,7 @@ export function createApp(settings: Settings, deps: { pool?: Pool; mailer?: Mail
         await store.linkOidc(created.user.id, claims.issuer, claims.subject)
         await store.audit('oidc.provisioned', claims.email, created.user.id)
         const fresh = await store.findUserById(created.user.id)
-        return fresh ? finishOidc(res, fresh) : redirect(res, '/login?error=oidc')
+        return fresh ? finishOidc(res, fresh, origin) : redirect(res, '/login?error=oidc')
       }
 
       // Branch D: mailbox already bound to a different subject.
@@ -475,7 +525,7 @@ export function createApp(settings: Settings, deps: { pool?: Pool; mailer?: Mail
       if (!runtime.current.oidc.bindRequireVerification) {
         await store.linkOidc(byEmail.id, claims.issuer, claims.subject)
         await store.audit('oidc.auto_bound', byEmail.username, byEmail.id)
-        return finishOidc(res, byEmail)
+        return finishOidc(res, byEmail, origin)
       }
       const ticket = randomUUID() + '.' + randomUUID()
       oidcPending.set(ticket, { claims, userId: byEmail.id, expires: Date.now() + 900_000 })
@@ -631,6 +681,18 @@ export function createApp(settings: Settings, deps: { pool?: Pool; mailer?: Mail
             from: has('from') ? String(m.from ?? '').trim() : cur.from,
           }
         }
+        if (input.server && typeof input.server === 'object') {
+          const sv = input.server as Record<string, unknown>
+          const has = (key: string) => Object.prototype.hasOwnProperty.call(sv, key)
+          const next: Record<string, unknown> = {}
+          if (has('publicUrl')) next.publicUrl = String(sv.publicUrl ?? '').trim()
+          if (has('trustedProxyIps')) {
+            next.trustedProxyIps = (Array.isArray(sv.trustedProxyIps)
+              ? sv.trustedProxyIps.map((v: unknown) => String(v).trim()).filter(Boolean)
+              : String(sv.trustedProxyIps ?? '').split(',').map(v => v.trim()).filter(Boolean))
+          }
+          patch.server = next
+        }
         if (input.ui && typeof input.ui === 'object') {
           const u = input.ui as Record<string, unknown>
           if (Object.prototype.hasOwnProperty.call(u, 'backgroundUrl')) {
@@ -647,6 +709,7 @@ export function createApp(settings: Settings, deps: { pool?: Pool; mailer?: Mail
         ctx.userLimiter.setLimit(runtime.limits.userRatePerMinute)
         ctx.anonLimiter.setLimit(runtime.limits.anonRatePerMinute)
         store.connectionLimit = runtime.limits.userConnectionLimit
+        syncTrustedProxies()
         await store.audit('settings.updated', admin.username, admin.id)
         return json(res, 200, runtime.redacted())
       }
@@ -769,7 +832,7 @@ export function createApp(settings: Settings, deps: { pool?: Pool; mailer?: Mail
       if (method === 'GET' && path === '/api/v1/me') return json(res, 200, { ...target, membershipId: membershipOf(device.userId), user: device.userId })
       if (method === 'GET' && path === '/api/v1/account/devices') {
         const items = store.list(device.userId).map(d => ({ ...d.descriptor, membershipId: membershipOf(d.userId), online: gateway.peers.has(d.descriptor.deviceId), lastSeenAt: d.lastSeenAt }))
-        return json(res, 200, { items, serverUrl: settings.publicUrl.origin, transport: 'webrtc' })
+        return json(res, 200, { items, serverUrl: origin, transport: 'webrtc' })
       }
       if (method === 'DELETE' && path === '/api/v1/devices/self') {
         await store.revoke(target.deviceId, device.userId)
@@ -826,6 +889,7 @@ export function createApp(settings: Settings, deps: { pool?: Pool; mailer?: Mail
       await store.hydrate()
       await store.acquireInstanceLease()
       await runtime.init()
+      syncTrustedProxies()
       store.connectionLimit = runtime.limits.userConnectionLimit
       let setupKey: string | undefined
       if ((await store.countUsers()) === 0) setupKey = await store.ensureSetupKey(() => process.env.DSH_SETUP_KEY?.trim() || randomToken())

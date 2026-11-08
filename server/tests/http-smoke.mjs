@@ -1,6 +1,6 @@
 
 import { newDb } from 'pg-mem'
-import { createApp } from './build/app.js'
+import { createApp, clientAddress, isPrivateAddress } from './build/app.js'
 import { loadSettings } from './build/settings.js'
 
 let pass = 0, fail = 0
@@ -28,6 +28,16 @@ const cookieOf = (r) => (r.headers.get('set-cookie') || '').split(';')[0]
 check('healthz', (await req('/healthz')).status === 200)
 check('ready', (await req('/ready')).status === 200)
 check('setup without key rejected', (await req('/api/v1/setup', { method: 'POST', ...json({ username: 'admin', password: 'admin-password-123' }) })).status === 403)
+// client address: private peers may supply X-Real-IP, public peers may not
+const fakeReq = (peer, headers) => ({ socket: { remoteAddress: peer }, rawHeaders: Object.entries(headers).flat() })
+check('loopback is private', isPrivateAddress('127.0.0.1') === true)
+check('RFC1918 is private', isPrivateAddress('192.168.1.9') === true && isPrivateAddress('10.2.3.4') === true)
+check('public is not private', isPrivateAddress('8.8.8.8') === false)
+check('private peer honours x-real-ip', clientAddress(fakeReq('192.168.1.2', { 'x-real-ip': '203.0.113.9' }), new Set()) === '203.0.113.9')
+check('public peer ignores x-real-ip', clientAddress(fakeReq('8.8.8.8', { 'x-real-ip': '203.0.113.9' }), new Set()) === '8.8.8.8')
+check('explicit trusted proxy honoured', clientAddress(fakeReq('8.8.8.8', { 'x-real-ip': '203.0.113.9' }), new Set(['8.8.8.8'])) === '203.0.113.9')
+check('comma list rejected', clientAddress(fakeReq('127.0.0.1', { 'x-real-ip': '1.1.1.1, 2.2.2.2' }), new Set()) === '127.0.0.1')
+
 const setup = await req('/api/v1/setup', { method: 'POST', ...json({ key: setupKey, username: 'admin', password: 'admin-password-123' }) })
 check('setup with key creates admin', setup.status === 201 && typeof setup.body.deviceKey === 'string')
 check('setup closes afterwards', (await req('/setup')).status === 302)
@@ -105,6 +115,16 @@ for (let i = 0; i < 80; i++) {
   if (r.status === 429) { limited = r.headers.get('retry-after') === '60' || r.status === 429; break }
 }
 check('anonymous rate limit engages', limited)
+
+// runtime public origin
+const adminRelogin = await req('/api/v1/auth/login', { method: 'POST', headers: { 'content-type': 'application/json', 'x-real-ip': '198.51.100.7' }, body: JSON.stringify({ email: 'admin', password: 'admin-password-123' }) })
+const adminFresh = cookieOf(adminRelogin)
+const badOrigin = await req('/api/v1/admin/settings', { method: 'PUT', headers: { 'content-type': 'application/json', cookie: adminFresh }, body: JSON.stringify({ server: { publicUrl: 'http://remote.example' } }) })
+check('non-https public url rejected', badOrigin.status === 400, String(badOrigin.status))
+const goodOrigin = await req('/api/v1/admin/settings', { method: 'PUT', headers: { 'content-type': 'application/json', cookie: adminFresh }, body: JSON.stringify({ server: { publicUrl: 'https://remote.example' } }) })
+check('public url saved at runtime', goodOrigin.status === 200 && goodOrigin.body.server.publicUrl === 'https://remote.example')
+const originLogin = await req('/api/v1/auth/login', { method: 'POST', ...json({ email: 'admin', password: 'admin-password-123' }), headers: { 'content-type': 'application/json', 'x-real-ip': '198.51.100.7' } })
+check('cookie follows the configured https origin', /; Secure/.test(originLogin.headers.get('set-cookie') || ''))
 
 await app.close()
 console.log(String.fromCharCode(10) + pass + ' passed, ' + fail + ' failed')

@@ -73,9 +73,9 @@ Everything is environment-driven at boot and overridable at runtime from the adm
 | Variable | Default | Purpose |
 |---|---|---|
 | `DATABASE_URL` | — | PostgreSQL connection string (required) |
-| `DSH_SERVER_PUBLIC_URL` | `http://localhost:8080` | external origin, used for cookies and OIDC redirects |
+| `DSH_SERVER_PUBLIC_URL` | unset | optional boot default; the admin console value wins (set on `/setup`) |
 | `DSH_SERVER_PORT` / `DSH_SERVER_HOST` | `8080` / `0.0.0.0` | listen address |
-| `DSH_SERVER_TRUSTED_PROXY_IPS` | — | proxies allowed to supply `X-Forwarded-For` |
+| `DSH_SERVER_TRUSTED_PROXY_IPS` | — | extra public proxies allowed to supply `X-Real-IP`/`X-Forwarded-For` (loopback and private ranges are trusted by default) |
 | `DSH_SETUP_KEY` | random | one-time bootstrap key |
 | `DSH_SMTP_*` | — | required for self-registration and password reset |
 | `DSH_OIDC_*` | — | optional IdP bootstrap (also configurable in the console) |

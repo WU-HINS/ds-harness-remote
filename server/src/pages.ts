@@ -26,11 +26,12 @@ const shell = (title: string, body: string, background?: string): string => '<!d
   '<meta name="viewport" content="width=device-width,initial-scale=1"><title>' + title + '</title>' +
   '<style>' + STYLE + '</style></head><body' + bg(background) + '>' + body + '</body></html>'
 
-export function setupPage(setupKey: string, error?: string): string {
+export function setupPage(setupKey: string, suggestedOrigin = '', error?: string): string {
   return shell('初始化', '<h1>初始化 DSH Remote</h1>' +
     '<p class="muted">需要一次性初始化密钥（见服务端启动日志的 SETUP KEY 区块）。创建首个管理员后该页面自动关闭。</p>' +
     '<form method="post" action="/api/v1/setup">' +
     '<label>初始化密钥</label><input name="key" value="' + setupKey.replace(/[^A-Za-z0-9_-]/g, '') + '" required>' +
+    '<label>公网地址（https://你的域名，可稍后在后台修改）</label><input name="publicUrl" placeholder="https://remote.example.com" value="' + attr(suggestedOrigin.startsWith('https://') ? suggestedOrigin : '') + '">' +
     '<label>管理员用户名</label><input name="username" required minlength="3" maxlength="64">' +
     '<label>密码（至少 12 位）</label><input name="password" type="password" required minlength="12">' +
     '<button type="submit">创建管理员</button></form>' + (error ? '<p class="err">' + error + '</p>' : ''))
@@ -177,6 +178,10 @@ export function adminPage(username: string, background?: string): string {
       '<label>允许邮箱域（逗号分隔）</label><input name="allowedDomains">' +
       '<label><input type="checkbox" name="autoProvision" style="width:auto;margin-right:8px">首次登录自动开通</label>' +
       '</fieldset><button type="submit">保存 OIDC</button></form>' +
+      '<h2>服务地址</h2><form id="server"><fieldset><legend>公网与代理</legend>' +
+      '<label>公网地址（https，留空按请求推导）</label><input name="publicUrl" placeholder="https://remote.example.com">' +
+      '<label>额外可信代理 IP（逗号分隔；内网与回环默认信任）</label><input name="trustedProxyIps" placeholder="203.0.113.7">' +
+      '</fieldset><button type="submit">保存服务地址</button></form>' +
       '<h2>外观</h2><form id="ui"><fieldset><legend>登录页背景</legend>' +
       '<label>背景图 URL（仅 https）</label><input name="backgroundUrl" placeholder="https://t.hinswu.top/pixiv">' +
       '</fieldset><button type="submit">保存外观</button></form>' +
@@ -228,6 +233,11 @@ export function adminPage(username: string, background?: string): string {
     'document.getElementById("newkey").addEventListener("submit",async e=>{e.preventDefault();if(!currentUser)return say("err","先选择一个用户");' +
     'const f=new FormData(e.target);const r=await fetch("/api/v1/admin/users/"+currentUser.id+"/device-keys",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({label:f.get("label")||"device"})});' +
     'const d=await r.json();if(r.ok){say("ok","新设备密钥（只显示一次）："+d.key);e.target.reset();loadKeys();loadUsers()}else say("err","生成失败")});' +
+    'async function loadServer(){const d=await (await fetch("/api/v1/admin/settings")).json();const f=document.getElementById("server");' +
+    'f.publicUrl.value=(d.server&&d.server.publicUrl)||"";f.trustedProxyIps.value=((d.server&&d.server.trustedProxyIps)||[]).join(",")}' +
+    'document.getElementById("server").addEventListener("submit",async e=>{e.preventDefault();const f=e.target;' +
+    'const r=await fetch("/api/v1/admin/settings",{method:"PUT",headers:{"content-type":"application/json"},body:JSON.stringify({server:{publicUrl:f.publicUrl.value.trim(),trustedProxyIps:f.trustedProxyIps.value}})});' +
+    'say2(r.ok?"ok":"err",r.ok?"服务地址已保存":"保存失败（"+r.status+"）")});' +
     'async function loadSettings(){const d=await (await fetch("/api/v1/admin/settings")).json();const o=d.oidc;const f=document.getElementById("oidc");' +
     'f.enabled.checked=!!o.enabled;f.onlySso.checked=!!o.onlySso;f.issuer.value=o.issuer||"";f.clientId.value=o.clientId||"";f.scopes.value=o.scopes||"openid email profile";' +
     'f.allowedDomains.value=(o.allowedDomains||[]).join(",");f.autoProvision.checked=o.autoProvision!==false;' +
@@ -260,7 +270,7 @@ export function adminPage(username: string, background?: string): string {
     'const r=await fetch("/api/v1/admin/smtp/test",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({to})});' +
     'say2(r.ok?"ok":"err",r.ok?"测试邮件已发送":"发送失败（"+r.status+"）")};' +
     'document.getElementById("unbind").onclick=async()=>{const r=await fetch("/api/v1/auth/oidc/unbind",{method:"POST"});say2(r.ok?"ok":"err",r.ok?"已解绑":"解绑失败（"+r.status+"）");loadExtra()};' +
-    'loadUsers();loadSettings();loadExtra();' +
+    'loadUsers();loadSettings();loadExtra();loadServer();' +
     '</script>', background)
 }
 

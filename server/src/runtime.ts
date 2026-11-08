@@ -19,7 +19,13 @@ export interface IceSettings {
   turnPassword: string
 }
 export interface UiSettings { backgroundUrl: string }
-export interface RuntimeDoc { oidc: OidcSettings; limits: LimitsSettings; ice: IceSettings; smtp: SmtpSettings; ui: UiSettings }
+export interface ServerSettings {
+  /** Public origin; empty means "derive from the request" until an admin sets it. */
+  publicUrl: string
+  /** Extra peers (beyond loopback/private ranges) allowed to supply client-IP headers. */
+  trustedProxyIps: string[]
+}
+export interface RuntimeDoc { server: ServerSettings; oidc: OidcSettings; limits: LimitsSettings; ice: IceSettings; smtp: SmtpSettings; ui: UiSettings }
 
 export const DEFAULT_BACKGROUND_URL = 'https://t.hinswu.top/pixiv'
 
@@ -38,12 +44,14 @@ export const DEFAULT_OIDC: OidcSettings = {
 export class Runtime {
   private doc: RuntimeDoc
   private client?: { fingerprint: string; client: OidcClient }
-  private readonly publicUrl: string
 
   constructor(private readonly store: Store, base: Settings) {
-    this.publicUrl = base.publicUrl.origin
     const fromEnv = base.oidc
     this.doc = {
+      server: {
+        publicUrl: base.publicUrlExplicit ? base.publicUrl.origin : '',
+        trustedProxyIps: base.trustedProxyIps,
+      },
       oidc: fromEnv ? {
         enabled: true, onlySso: false, bindRequireVerification: true, issuer: fromEnv.issuer, clientId: fromEnv.clientId, clientSecret: fromEnv.clientSecret,
         scopes: fromEnv.scopes, allowedDomains: fromEnv.allowedDomains, autoProvision: fromEnv.autoProvision,
@@ -80,6 +88,7 @@ export class Runtime {
       ice: { ...this.doc.ice, ...(stored.ice ?? {}) },
       smtp: { ...this.doc.smtp, ...(stored.smtp ?? {}) },
       ui: { ...this.doc.ui, ...(stored.ui ?? {}) },
+      server: { ...this.doc.server, ...(stored.server ?? {}) },
     }
     this.client = undefined
   }
@@ -91,6 +100,18 @@ export class Runtime {
       ice: { ...this.doc.ice, ...(patch.ice ?? {}) },
       smtp: { ...this.doc.smtp, ...(patch.smtp ?? {}) },
       ui: { ...this.doc.ui, ...(patch.ui ?? {}) },
+      server: { ...this.doc.server, ...(patch.server ?? {}) },
+    }
+    const publicUrl = next.server.publicUrl.trim()
+    if (publicUrl) {
+      let parsed: URL
+      try { parsed = new URL(publicUrl) } catch { throw new Error('公网地址不是合法 URL') }
+      const loopback = ['localhost', '127.0.0.1', '[::1]'].includes(parsed.hostname)
+      if (parsed.pathname !== '/' || parsed.search || parsed.hash) throw new Error('公网地址只能是 origin（不含路径）')
+      if (parsed.protocol !== 'https:' && !(parsed.protocol === 'http:' && loopback)) {
+        throw new Error('公网地址必须是 https（localhost 例外）')
+      }
+      next.server.publicUrl = parsed.origin
     }
     // A background must be https: it is loaded by the browser on the login page.
     if (next.ui.backgroundUrl && !/^https:\/\//i.test(next.ui.backgroundUrl)) throw new Error('背景图必须是 https 地址')
@@ -106,12 +127,12 @@ export class Runtime {
     return next
   }
 
-  oidcClient(): OidcClient | undefined {
+  oidcClient(origin: string): OidcClient | undefined {
     const config = this.doc.oidc
     if (!config.enabled || !config.issuer || !config.clientId) return undefined
-    const fingerprint = JSON.stringify([config.issuer, config.clientId, config.clientSecret, config.scopes, config.allowedDomains])
+    const fingerprint = JSON.stringify([origin, config.issuer, config.clientId, config.clientSecret, config.scopes, config.allowedDomains])
     if (this.client?.fingerprint !== fingerprint) {
-      this.client = { fingerprint, client: new OidcClient(config, this.publicUrl) }
+      this.client = { fingerprint, client: new OidcClient(config, origin) }
     }
     return this.client.client
   }
@@ -124,6 +145,7 @@ export class Runtime {
       ice: { ...this.doc.ice, turnSecret: this.doc.ice.turnSecret ? '••••••' : '', turnPassword: this.doc.ice.turnPassword ? '••••••' : '' },
       smtp: { ...this.doc.smtp, pass: this.doc.smtp.pass ? '••••••' : '' },
       ui: this.doc.ui,
+      server: this.doc.server,
       smtpReady: smtpConfigured(this.doc.smtp),
     }
   }
