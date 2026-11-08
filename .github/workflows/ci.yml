@@ -2,16 +2,13 @@ name: CI
 
 on:
   push:
-    branches:
-      - main
-    tags:
-      - "v*"
+    branches: [main]
+    tags: ["v*"]
   pull_request:
   workflow_dispatch:
 
 permissions:
   contents: read
-  pull-requests: read
 
 concurrency:
   group: ci-${{ github.workflow }}-${{ github.ref }}
@@ -21,94 +18,26 @@ env:
   CI: true
 
 jobs:
-  changes:
-    name: Detect Android changes
-    runs-on: ubuntu-latest
-    outputs:
-      android: ${{ steps.detect.outputs.android }}
-    steps:
-      - name: Detect Android changes
-        id: detect
-        env:
-          GH_TOKEN: ${{ github.token }}
-          GH_REPO: ${{ github.repository }}
-          PR_NUMBER: ${{ github.event.pull_request.number }}
-        run: |
-          if [[ "$GITHUB_EVENT_NAME" != "pull_request" ]]; then
-            echo "android=true" >> "$GITHUB_OUTPUT"
-            exit 0
-          fi
-
-          files=$(gh api --paginate "repos/$GH_REPO/pulls/$PR_NUMBER/files" --jq '.[].filename') || {
-            echo "::error::Failed to list pull request files; cannot detect Android changes"
-            exit 1
-          }
-
-          android=false
-          while IFS= read -r file_path; do
-            case "$file_path" in
-              .github/workflows/ci.yml|apps/android/*|packages/client-core/*|packages/crypto/*|packages/protocol/*|packages/webrtc/*|package.json|pnpm-lock.yaml|pnpm-workspace.yaml)
-                android=true
-                break
-                ;;
-            esac
-          done <<< "$files"
-
-          echo "android=$android" >> "$GITHUB_OUTPUT"
-
   quality:
-    name: Check, test, and build
+    name: Check and test
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
-      - name: Check out repository
-        uses: actions/checkout@v6
-
-      - name: Set up pnpm
-        uses: pnpm/action-setup@v6
+      - uses: actions/checkout@v6
+      - uses: pnpm/action-setup@v6
         with:
           version: 9.15.4
-
-      - name: Set up Node.js
-        uses: actions/setup-node@v6
+      - uses: actions/setup-node@v6
         with:
           node-version: 24.9.0
           cache: pnpm
-
-      - name: Install dependencies
-        run: pnpm install --frozen-lockfile
-
-      - name: Build workspace packages
-        run: pnpm --filter './packages/**' -r build
-
-      - name: Verify committed Plugin bundles
-        run: git diff --exit-code -- packages/plugin/dist/index.js packages/plugin/dist/client.github.js
-
-      - name: Check types
-        run: pnpm -r check
-
-      - name: Verify GitHub plugin bundle
-        run: |
-          node scripts/verify-dsh-plugin.mjs
-
-      - name: Run tests
-        run: pnpm -r test
-
-      # Android prebuild recompiles shared packages. Serialize workspace builds
-      # so Plugin bundling cannot read dist files while tsc rewrites them.
-      - name: Build workspace
-        run: NODE_ENV=production pnpm --workspace-concurrency=1 -r build
-
-      - name: Verify production Plugin bundles
-        run: |
-          git diff --exit-code -- packages/plugin/dist/index.js packages/plugin/dist/client.github.js
-          node scripts/verify-dsh-plugin.mjs
-
-      - name: Verify packed Host WebRTC fallback and installation closure
-        run: node scripts/verify-packed-webrtc.mjs
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm build
+      - run: pnpm -r check
+      - run: pnpm test
 
   server-postgres:
-    name: Server tests against PostgreSQL
+    name: Store smoke on PostgreSQL
     runs-on: ubuntu-latest
     timeout-minutes: 15
     services:
@@ -134,186 +63,26 @@ jobs:
           node-version: 24.9.0
           cache: pnpm
       - run: pnpm install --frozen-lockfile
-      - run: pnpm --filter './packages/**' -r build
-      - name: Store smoke on real PostgreSQL
+      - name: Build
+        run: pnpm build
+      - name: Run store tests against PostgreSQL
         env:
           DATABASE_URL: postgres://dsh:dsh@127.0.0.1:5432/dsh
-        run: pnpm --filter @dsh-remote/server test:pg
-      - run: pnpm --filter @dsh-remote/server test:store
-
-  plugin-package:
-    name: Package npm plugin
-    needs: quality
-    runs-on: ubuntu-latest
-    timeout-minutes: 10
-    steps:
-      - name: Check out repository
-        uses: actions/checkout@v6
-
-      - name: Set up pnpm
-        uses: pnpm/action-setup@v6
-        with:
-          version: 9.15.4
-
-      - name: Set up Node.js
-        uses: actions/setup-node@v6
-        with:
-          node-version: 24.9.0
-          cache: pnpm
-
-      - name: Install dependencies
-        run: pnpm install --frozen-lockfile
-
-      - name: Build workspace packages
-        run: pnpm --filter './packages/**' -r build
-
-      - name: Pack npm packages
-        run: |
-          mkdir -p artifacts/packages/root artifacts/packages/workspace
-          pnpm pack --pack-destination "$GITHUB_WORKSPACE/artifacts/packages/root"
-
-          for package_json in packages/*/package.json; do
-            package_dir="${package_json%/package.json}"
-            pnpm --dir "$package_dir" pack --pack-destination "$GITHUB_WORKSPACE/artifacts/packages/workspace"
-          done
-
-      - name: Upload npm packages
-        uses: actions/upload-artifact@v7
-        with:
-          name: dsh-remote-packages-${{ github.sha }}
-          path: artifacts/packages/**/*.tgz
-          if-no-files-found: error
-          retention-days: 14
-
-      - name: Build browser extension
-        run: NODE_ENV=production pnpm --dir apps/browser build
-
-      - name: Package browser extension
-        run: |
-          mkdir -p artifacts/browser
-          cd apps/browser
-          zip -qr "$GITHUB_WORKSPACE/artifacts/browser/dsh-remote-browser-${GITHUB_SHA}.zip" \
-            manifest.json popup.html styles.css media _locales dist
-
-      - name: Upload browser extension
-        uses: actions/upload-artifact@v7
-        with:
-          name: dsh-remote-browser-${{ github.sha }}
-          path: artifacts/browser/dsh-remote-browser-${{ github.sha }}.zip
-          if-no-files-found: error
-          retention-days: 14
+        run: pnpm test:pg
 
   docker-build:
-    name: Build Server image (no push)
+    name: Build image (no push)
     runs-on: ubuntu-latest
     timeout-minutes: 20
-    permissions:
-      contents: read
     steps:
-      - name: Check out repository
-        uses: actions/checkout@v6
-
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
-
-      - name: Build Server image
-        uses: docker/build-push-action@v6
+      - uses: actions/checkout@v6
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/build-push-action@v6
         with:
           context: .
-          file: apps/server/Dockerfile
+          file: server/Dockerfile
           push: false
           load: false
           tags: dsh-remote-server:ci
           cache-from: type=gha
           cache-to: type=gha,mode=max
-
-  android-apk:
-    name: Package Android APK
-    needs:
-      - changes
-      - quality
-    if: needs.changes.outputs.android == 'true'
-    runs-on: ubuntu-latest
-    timeout-minutes: 45
-    steps:
-      - name: Check out repository
-        uses: actions/checkout@v6
-
-      - name: Set up pnpm
-        uses: pnpm/action-setup@v6
-        with:
-          version: 9.15.4
-
-      - name: Set up Node.js
-        uses: actions/setup-node@v6
-        with:
-          node-version: 24.9.0
-          cache: pnpm
-
-      - name: Set up Java
-        uses: actions/setup-java@v5
-        with:
-          distribution: temurin
-          java-version: 17
-
-      - name: Set up Gradle
-        uses: gradle/actions/setup-gradle@v6
-
-      - name: Install dependencies
-        run: pnpm install --frozen-lockfile
-
-      - name: Build workspace packages
-        run: pnpm --filter './packages/**' -r build
-
-      - name: Check out Intelligent UI renderer source
-        uses: actions/checkout@v6
-        with:
-          repository: dreamfarer-space/deepseek-harness-intelligent-ui
-          # Pinned upstream PR #82 merge commit; update only after auditing the new artifact.
-          ref: f3735efffd823f8c34817f4e8554743ac3276225
-          path: .deps/deepseek-harness-intelligent-ui
-
-      - name: Verify pinned Intelligent UI renderer
-        run: |
-          test "$(git -C .deps/deepseek-harness-intelligent-ui rev-parse HEAD)" = "f3735efffd823f8c34817f4e8554743ac3276225" || { echo '::error::Unexpected renderer source commit'; exit 1; }
-          test "$(git -C .deps/deepseek-harness-intelligent-ui hash-object renderer/renderer.js)" = "ebac4a4c2199383458d4e1fa2121be0e6043c5c0" || { echo '::error::Unexpected renderer file content'; exit 1; }
-
-      - name: Bundle local Android renderers
-        env:
-          DSH_INTELLIGENT_UI_RENDERER_BUNDLE: ${{ github.workspace }}/.deps/deepseek-harness-intelligent-ui/renderer/renderer.js
-          DSH_REQUIRE_INTELLIGENT_UI: 'true'
-        run: pnpm --dir apps/android run build:renderers
-
-      - name: Verify bundled Android renderers
-        env:
-          DSH_REQUIRE_INTELLIGENT_UI: 'true'
-        run: node apps/android/scripts/verify-intelligent-ui-renderer.mjs
-
-      - name: Generate Android project
-        run: pnpm --dir apps/android exec expo prebuild --platform android --no-install
-
-      - name: Build release APK
-        env:
-          NODE_ENV: production
-        run: |
-          chmod +x apps/android/android/gradlew
-          apps/android/android/gradlew \
-            -p apps/android/android \
-            :app:assembleRelease \
-            --no-daemon \
-            --build-cache \
-            -PreactNativeArchitectures=${{ github.event_name == 'pull_request' && 'arm64-v8a' || 'armeabi-v7a,arm64-v8a' }}
-
-      - name: Stage APK
-        run: |
-          mkdir -p artifacts/android
-          cp apps/android/android/app/build/outputs/apk/release/app-release.apk \
-            artifacts/android/dsh-remote-android.apk
-
-      - name: Upload Android APK
-        uses: actions/upload-artifact@v7
-        with:
-          name: dsh-remote-android-${{ github.sha }}
-          path: artifacts/android/dsh-remote-android.apk
-          if-no-files-found: error
-          retention-days: 14

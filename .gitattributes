@@ -1,2 +1,0 @@
-# Generated bundles include third-party comments/templates with trailing spaces.
-packages/plugin/dist/*.js whitespace=-trailing-space linguist-generated
