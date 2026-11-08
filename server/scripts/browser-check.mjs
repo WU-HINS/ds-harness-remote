@@ -128,16 +128,23 @@ check('key table is a keyboard reachable region', await page.evaluate(() => {
   const box = document.querySelector('.table-scroll')
   return Boolean(box && box.getAttribute('tabindex') === '0' && box.getAttribute('role') === 'region')
 }))
-for (const width of [320, 375, 414]) {
-  await page.setViewportSize({ width, height: 800 })
-  await page.goto(BASE + '/account', { waitUntil: 'domcontentloaded' })
-  const fit = await page.evaluate(() => {
-    const dev = document.querySelector('.who .dev-name')?.getBoundingClientRect()
-    const next = document.querySelector('.topbar .icon-btn')?.getBoundingClientRect()
-    const overlap = dev && next ? !(dev.right <= next.left || next.right <= dev.left) : false
-    return { overflow: document.documentElement.scrollWidth - window.innerWidth, overlap }
-  })
-  check('tablet-width topbar ' + width, fit.overflow <= 1 && !fit.overlap, JSON.stringify(fit))
+for (const width of [320, 336, 344, 350, 361, 375, 414]) {
+  for (const path of ['/admin', '/account']) {
+    await page.setViewportSize({ width, height: 800 })
+    await page.goto(BASE + path, { waitUntil: 'domcontentloaded' })
+    const fit = await page.evaluate(() => {
+      const dev = document.querySelector('.who .dev-name')?.getBoundingClientRect()
+      const next = document.querySelector('.topbar .icon-btn')?.getBoundingClientRect()
+      const exit = document.querySelector('header.topbar form button')?.getBoundingClientRect()
+      const overlap = dev && next ? !(dev.right <= next.left || next.right <= dev.left) : false
+      return {
+        overflow: document.documentElement.scrollWidth - window.innerWidth,
+        overlap,
+        exitInside: exit ? exit.right <= window.innerWidth + 0.5 : false,
+      }
+    })
+    check('topbar geometry ' + width + ' ' + path, fit.overflow <= 1 && !fit.overlap && fit.exitInside, JSON.stringify(fit))
+  }
 }
 await page.setViewportSize({ width: 1280, height: 900 })
 await page.goto(BASE + '/account/keys', { waitUntil: 'domcontentloaded' })

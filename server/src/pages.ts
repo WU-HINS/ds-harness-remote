@@ -45,8 +45,7 @@ const CSS = [
   '.topbar .spacer{flex:1 1 auto;min-width:0}',
   '@media (max-width:820px){.who .acct{display:none}}',
   '@media (max-width:640px){.brand .wordmark{display:none}.nav{margin-left:0}}',
-        '@media (max-width:340px){.topbar{gap:4px;padding:0 10px}.topbar .brand{display:none}.navlink{padding:6px 6px}.topbar .btn.sm{padding:0 9px}.topbar .who .dev-name{font-size:10.5px}}',
-  '@media (max-width:520px){.navlink{padding:6px 8px;font-size:13px}.topbar{gap:6px}.topbar .avatar{display:none}.topbar .cmdk-btn{display:none}.topbar .spacer{min-width:0}@media (max-width:380px){.topbar .who .dev-name{font-size:11px}}}',
+        '@media (max-width:520px){.navlink{padding:6px 8px;font-size:13px}.topbar{gap:6px}.topbar .avatar{display:none}.topbar .cmdk-btn{display:none}.topbar .spacer{min-width:0}@media (max-width:380px){.topbar .who .dev-name{font-size:11px}}}',
   '.wrap{max-width:1252px;margin:0 auto;padding:var(--u-8) clamp(var(--u-6),3vw,var(--u-9))}',
   '.grid-phi{display:grid;grid-template-columns:var(--phi-cols);gap:var(--gap-section);align-items:start}',
   '.grid-phi>*{min-width:0}',
@@ -140,6 +139,8 @@ const CSS = [
   '.cmdk-item{display:flex;justify-content:space-between;align-items:center;gap:var(--u-4);width:100%;padding:10px var(--u-4);border:0;border-radius:var(--r-sm);background:transparent;color:hsl(var(--text));font:inherit;text-align:left;cursor:pointer}',
   '.cmdk-item:hover,.cmdk-item.active{background:hsl(var(--surface-2))}',
   '@media (max-width:640px){.navlink .lbl{display:none}.navlink{padding:6px 10px}}',
+  // Last so it wins the cascade: below 360 the bar keeps only the essentials.
+  '@media (max-width:374px){.topbar{gap:4px;padding:0 10px}.topbar .brand{display:none}.topbar .navlink{padding:6px 6px}.topbar .btn.sm{padding:0 9px}.topbar .who .dev-name{font-size:10.5px}}',
   '@media (prefers-reduced-motion:reduce){::view-transition-old(root),::view-transition-new(root),.card,body{animation:none!important;transition:none!important}}',
 ].join('');
 
@@ -349,10 +350,10 @@ export function bindPage(email: string, onlySso: boolean, background?: string): 
 export function homePage(username: string, role: string, deviceUsername = ''): string {
   return shell('概览', topbar(username, 'home', deviceUsername, role === 'admin') + '<main class="wrap" id="main">' +
     '<div class="grid-phi"><div>' +
-    '<section class="card"><h1 style="font-size:26px">你好，' + esc(username) + '</h1>' +
+    '<section class="card"><h1 style="font-size:clamp(20px,4.6vw,26px)">你好，' + esc(username) + '</h1>' +
     '<p class="muted" style="margin:10px 0 0">从这里管理账户、设备与这台服务器。业务流量端到端加密，服务器只转发密文。</p></section>' +
     '<div class="stats" style="margin-top:var(--s3)">' +
-    '<div class="stat"><div class="muted small">当前角色</div><div class="n">' + esc(role) + '</div></div>' +
+    '<div class="stat"><div class="muted small">当前角色</div><div class="n">' + (role === 'admin' ? '管理员' : '普通用户') + '</div></div>' +
     '<div class="stat"><div class="muted small">已登记设备</div><div class="n" id="deviceCount">—</div></div>' +
     '<div class="stat"><div class="muted small">服务状态</div><div class="n" id="health">—</div></div></div>' +
     '</div><aside>' + card('快捷入口', '<div class="stack">' +
@@ -498,7 +499,7 @@ export function adminPage(username: string, background?: string, deviceUsername 
     'function $(id){return document.getElementById(id)}' +
     'function loadUsers(){return dshApi("/api/v1/admin/users").then(function(r){var rows=r.body.users||[];$("userCount").textContent=rows.length;' +
     '$("rows").setAttribute("aria-busy","false");$("rows").innerHTML=rows.length?rows.map(function(u){var name=dshEsc(u.username);var admin=u.role==="admin";' +
-    'return \'<tr><td>\'+name+(admin?\' <span class="badge">管理员</span>\':\'\')+\'</td><td class="mono small">\'+dshEsc(u.deviceUsername||"-")+\'</td><td>\'+dshEsc(u.role)+\'</td><td>\'+u.deviceKeys+\'</td><td>\'+' +
+    'return \'<tr><td>\'+name+(admin?\' <span class="badge">管理员</span>\':\'\')+\'</td><td class="mono small">\'+dshEsc(u.deviceUsername||"-")+\'</td><td>\'+(u.role==="admin"?"管理员":"普通用户")+\'</td><td>\'+u.deviceKeys+\'</td><td>\'+' +
     '(admin?\'<span class="muted small">受保护</span>\':\'<div class="actions"><button class="btn ghost sm" data-a="toggle" data-id="\'+dshEsc(u.id)+\'" aria-label="\'+(u.disabled?"启用":"禁用")+\' \'+name+\'">\'+(u.disabled?"启用":"禁用")+\'</button>\'+' +
     '\'<button class="btn danger sm" data-a="del" data-id="\'+dshEsc(u.id)+\'" data-name="\'+name+\'" aria-label="删除 \'+name+\'">删除</button></div>\')+\'</td></tr>\'}).join(""):emptyRow(5,"还没有用户")})}' +
     'function loadDevices(){dshApi("/api/v1/admin/devices").then(function(r){var xs=r.body.items||[];' +
