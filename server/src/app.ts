@@ -101,6 +101,21 @@ export function clientAddress(req: IncomingMessage, trusted: ReadonlySet<string>
   if (forwarded && isIP(forwarded)) return normalizeAddress(forwarded)
   return peer
 }
+function loginErrorText(code: string | null): string | undefined {
+  if (!code) return undefined
+  return ({
+    AUTH_INVALID: '邮箱或密码不正确',
+    SSO_ONLY: '本站已启用仅 SSO 登录，请使用身份提供方登录',
+    EMAIL_UNVERIFIED: '邮箱尚未验证',
+    RATE_LIMITED: '尝试过于频繁，请稍后再试',
+    ACCOUNT_DISABLED: '账号已被禁用',
+    CODE_INVALID: '验证码不正确或已过期',
+    INVALID_EMAIL: '邮箱格式不正确',
+    SETUP_KEY_INVALID: '初始化密钥无效',
+    SETUP_CLOSED: '初始化已完成',
+  } as Record<string, string>)[code] ?? code
+}
+
 function isForm(req: IncomingMessage): boolean {
   return String(req.headers['content-type'] ?? '').includes('application/x-www-form-urlencoded')
 }
@@ -296,7 +311,7 @@ export function createApp(settings: Settings, deps: { pool?: Pool; mailer?: Mail
     // ── login ───────────────────────────────────────────────────────────────
     if (method === 'GET' && path === '/login') {
       if (await sessionUser(req)) return redirect(res, '/')
-      return html(res, 200, loginPage(Boolean(runtime.oidcClient(origin)), undefined, runtime.current.ui.backgroundUrl))
+      return html(res, 200, loginPage(Boolean(runtime.oidcClient(origin)), loginErrorText(url.searchParams.get('error')), runtime.current.ui.backgroundUrl))
     }
     if (method === 'GET' && path === '/register') return html(res, 200, registerPage(runtime.current.oidc.onlySso, runtime.current.ui.backgroundUrl))
     if (method === 'GET' && path === '/forgot') return html(res, 200, forgotPage(runtime.current.oidc.onlySso, runtime.current.ui.backgroundUrl))
@@ -943,6 +958,15 @@ export function createApp(settings: Settings, deps: { pool?: Pool; mailer?: Mail
       const status = error instanceof ApiError ? error.status : error instanceof z.ZodError ? 400 : 500
       const code = error instanceof ApiError ? error.code : error instanceof z.ZodError ? 'INVALID_MESSAGE' : 'INTERNAL_ERROR'
       if (status === 429) res.setHeader('retry-after', '60')
+      // A browser form post must land on a page, not on raw JSON.
+      if (isForm(req)) {
+        const path = new URL(req.url ?? '/', 'http://x').pathname
+        const target = path === '/api/v1/auth/login' ? '/login?error='
+          : path === '/api/v1/setup' ? '/setup?error='
+            : path === '/api/v1/auth/register/complete' ? '/register?error='
+              : path === '/api/v1/auth/password/reset/complete' ? '/forgot?error=' : ''
+        if (target) return redirect(res, target + encodeURIComponent(code))
+      }
       json(res, status, { error: { code, message: code, requestId: randomUUID(), retryable: status === 429 || status >= 500 } })
     })
   })
