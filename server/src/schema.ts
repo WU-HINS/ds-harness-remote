@@ -32,6 +32,7 @@ export const SCHEMA_STATEMENTS: readonly string[] = [
   'CREATE INDEX IF NOT EXISTS sessions_user_idx ON sessions (user_id)',
   'CREATE INDEX IF NOT EXISTS devices_user_idx ON devices (user_id)',
   'CREATE INDEX IF NOT EXISTS tokens_device_idx ON device_tokens (device_id)',
+  'ALTER TABLE device_keys ADD COLUMN IF NOT EXISTS secret text',
   'CREATE INDEX IF NOT EXISTS device_keys_user_idx ON device_keys (user_id)',
   'CREATE INDEX IF NOT EXISTS email_codes_lookup_idx ON email_codes (email, purpose)',
   'CREATE INDEX IF NOT EXISTS email_codes_created_idx ON email_codes (email, created_at)',

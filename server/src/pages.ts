@@ -357,6 +357,11 @@ export function accountPage(username: string, email: string, oidcBound: boolean,
     card('账户', '<div class="grid-2">' +
       '<div><div class="label">邮箱</div><div class="mono">' + esc(email || '未设置') + '</div></div>' +
       '<div><div class="label">邮箱状态</div><div><span class="badge">' + (email ? '已验证' : '未设置') + '</span></div></div></div>') +
+    card('设备密钥', table(['标签', '设备数', '状态', '密钥', '操作'], 'keys', '还没有设备密钥，先生成一把') +
+      '<div class="row" style="margin-top:12px"><div style="flex:1;min-width:200px"><label class="label" for="key-label">新密钥标签</label><input class="input" id="key-label" placeholder="例如 客厅 iPad" maxlength="64"></div>' +
+      '<button class="btn" type="button" id="create-key">生成密钥</button></div>' +
+      '<p class="small muted" style="margin:10px 0 0">密钥随时可以在这里查看和复制；吊销后用它接入的设备会立即掉线，且同一设备无法重新接入。</p>', '仅你自己可见') +
+    card('我的设备', table(['设备', '角色', '状态', '最近在线'], 'devices', '还没有设备接入')) +
     card('换绑邮箱', '<div class="stack">' +
       '<div><label class="label" for="new-email">新邮箱</label><input class="input" id="new-email" type="email" placeholder="new@example.com" autocomplete="email"></div>' +
       '<div><button class="btn ghost" type="button" id="send-code">发送验证码</button></div>' +
@@ -367,16 +372,33 @@ export function accountPage(username: string, email: string, oidcBound: boolean,
     card('单点登录', '<p class="muted small" style="margin:0 0 12px">' + (oidcBound ? '已绑定 OIDC 身份。' : '尚未绑定 OIDC 身份。') + '</p>' +
       '<div class="stack"><a class="btn ghost block" href="/api/v1/auth/oidc/start">绑定 / 重新绑定</a>' +
       (onlySso ? '' : '<button class="btn danger block" type="button" id="unbind">解绑</button>') + '</div>') +
-    card('提示', '<p class="muted small" style="margin:0">设备登录使用「设备用户名 + 设备密钥」，与网页密码相互独立。设备密钥可在管理员后台生成与吊销。</p>') +
+    card('设备登录', '<p class="muted small" style="margin:0">设备登录使用「设备用户名 + 设备密钥」。<br>设备用户名：<span class="mono" id="deviceUser">—</span></p>') +
     '</aside></div></main>' +
     '<script>' +
-    'document.getElementById("change-pw").onclick=function(){dshPost("/api/v1/auth/password/change",{currentPassword:document.getElementById("cur-pass").value,newPassword:document.getElementById("new-pass").value}).then(function(r){dshToast(r.ok?"密码已修改":dshErr(r.body.error&&r.body.error.code,r.status),r.ok?"ok":"err")})};' +
-    'document.getElementById("send-code").onclick=function(){dshPost("/api/v1/auth/email/change/start",{newEmail:document.getElementById("new-email").value.trim()}).then(function(r){dshToast(r.status===202?"验证码已发送":dshErr(r.body.error&&r.body.error.code,r.status),r.status===202?"ok":"err")})};' +
-    'document.getElementById("change-email").onclick=function(){dshPost("/api/v1/auth/email/change/complete",{newEmail:document.getElementById("new-email").value.trim(),newCode:document.getElementById("new-code").value.trim(),oldCode:document.getElementById("old-code").value.trim()}).then(function(r){if(r.ok){dshToast("邮箱已换绑","ok");setTimeout(function(){location.reload()},800)}else dshToast(dshErr(r.body.error&&r.body.error.code,r.status),"err")})};' +
+    'var deviceUsername="";' +
+    'function loadProfile(){dshApi("/api/v1/auth/me").then(function(r){var u=(r.body.user&&r.body.user.username)||"",d=r.body.deviceUsername||r.body.user&&r.body.user.deviceUsername;if(d)$("deviceUser").textContent=d})}' +
+    'function loadKeys(){dshApi("/api/v1/account/device-keys").then(function(r){var ks=r.body.keys||[];' +
+    '$("keys").innerHTML=ks.length?ks.map(function(k){return \'<tr><td>\'+dshEsc(k.label)+\'</td><td><span class="badge">\'+k.deviceCount+\'</span></td><td>\'+(k.revoked?\'<span class="badge off">已吊销</span>\':\'<span class="badge ok">正常</span>\')+\'</td>\' +' +
+    '\'<td>\'+(k.key?\'<span class="mono small keymask" data-key="\'+dshEsc(k.key)+\'">••••••••••••</span> <button class="btn ghost sm" data-a="reveal">显示</button><button class="btn ghost sm" data-a="copy" data-key="\'+dshEsc(k.key)+\'">复制</button>\':\'<span class="muted small">不可查看（旧密钥）</span>\')+\'</td>\' +' +
+    '\'<td>\'+(k.revoked||k.id==="unbound"?"":\'<button class="btn danger sm" data-a="revoke" data-id="\'+dshEsc(k.id)+\'" aria-label="吊销密钥 \'+dshEsc(k.label)+\'">吊销</button>\')+\'</td></tr>\'}).join(""):emptyRow(5,"还没有设备密钥")})}' +
+    'function loadDevices(){dshApi("/api/v1/account/devices").then(function(r){var xs=r.body.items||[];' +
+    '$("devices").innerHTML=xs.length?xs.map(function(x){return \'<tr><td>\'+dshEsc(x.name)+\'</td><td>\'+dshEsc(x.role)+\'</td><td>\'+(x.revoked?\'<span class="badge off">已吊销</span>\':(x.online?\'<span class="badge ok">在线</span>\':\'<span class="badge">离线</span>\'))+\'</td><td class="muted small">\'+(x.lastSeenAt?dshEsc(new Date(x.lastSeenAt).toLocaleString()):"—")+\'</td></tr>\'}).join(""):emptyRow(4,"还没有设备接入")})}' +
+    'function emptyRow(n,t){return \'<tr><td colspan="\'+n+\'" class="muted">\'+t+\'</td></tr>\'}' +
+    'function $(id){return document.getElementById(id)}' +
+    'document.addEventListener("click",function(e){var b=e.target.closest?e.target.closest("button[data-a]"):null;if(!b)return;var a=b.getAttribute("data-a");' +
+    'if(a==="reveal"){var m=b.parentElement.querySelector(".keymask");if(m){m.textContent=m.getAttribute("data-key");b.remove()}}' +
+    'else if(a==="copy"){dshCopy(b.getAttribute("data-key"))}' +
+    'else if(a==="revoke"){if(!confirm("吊销这把密钥？使用它的设备会立即掉线，且无法用同一设备 ID 重新接入。"))return;' +
+    'dshDel("/api/v1/account/device-keys/"+encodeURIComponent(b.getAttribute("data-id"))).then(function(r){dshToast(r.ok?"已吊销":dshErr(r.body.error&&r.body.error.code,r.status),r.ok?"ok":"err");loadKeys()})}});' +
+    '$("create-key").onclick=function(){dshPost("/api/v1/account/device-keys",{label:$("key-label").value.trim()||"device"}).then(function(r){' +
+    'if(r.ok){dshToast("密钥已生成，可在列表中显示或复制","ok");$("key-label").value="";loadKeys()}else dshToast(dshErr(r.body.error&&r.body.error.code,r.status),"err")})};' +
+    'document.getElementById("change-pw").onclick=function(){dshPost("/api/v1/auth/password/change",{currentPassword:$("cur-pass").value,newPassword:$("new-pass").value}).then(function(r){dshToast(r.ok?"密码已修改":dshErr(r.body.error&&r.body.error.code,r.status),r.ok?"ok":"err")})};' +
+    'document.getElementById("send-code").onclick=function(){dshPost("/api/v1/auth/email/change/start",{newEmail:$("new-email").value.trim()}).then(function(r){dshToast(r.status===202?"验证码已发送":dshErr(r.body.error&&r.body.error.code,r.status),r.status===202?"ok":"err")})};' +
+    'document.getElementById("change-email").onclick=function(){dshPost("/api/v1/auth/email/change/complete",{newEmail:$("new-email").value.trim(),newCode:$("new-code").value.trim(),oldCode:$("old-code").value.trim()}).then(function(r){if(r.ok){dshToast("邮箱已换绑","ok");setTimeout(function(){location.reload()},800)}else dshToast(dshErr(r.body.error&&r.body.error.code,r.status),"err")})};' +
     'var ub=document.getElementById("unbind");if(ub)ub.onclick=function(){if(!confirm("解绑后将无法用该 SSO 身份登录，确定吗？"))return;dshPost("/api/v1/auth/oidc/unbind").then(function(r){dshToast(r.ok?"已解绑":dshErr(r.body.error&&r.body.error.code,r.status),r.ok?"ok":"err")})};' +
+    'loadKeys();loadDevices();loadProfile();' +
     '</script>', background, 'console')
 }
-
 
 const adminTabs = (active: 'people' | 'settings'): string =>
   '<nav class="subnav" aria-label="管理分区">' +
@@ -401,45 +423,36 @@ export function adminPage(username: string, background?: string): string {
       '<div><label class="label" for="np">初始密码（可留空）</label><input class="input" id="np" type="password" autocomplete="new-password"></div></div>' +
       '<div class="row" style="margin-top:12px"><div style="min-width:140px"><label class="label" for="nr">角色</label><select class="input" id="nr"><option value="user">user</option><option value="admin">admin</option></select></div>' +
       '<button class="btn" type="button" id="create-user">创建用户</button></div>', '共 <span id="userCount">0</span> 人') +
-    card('设备密钥 <span class="badge" id="keyOwner">未选择用户</span>', table(['标签', '设备数', '状态', '操作'], 'keys', '先在用户行点「密钥」选择用户') +
-      '<div class="row" style="margin-top:12px"><div style="flex:1;min-width:200px"><label class="label" for="key-label">密钥标签</label><input class="input" id="key-label" placeholder="例如 客厅 iPad" maxlength="64"></div>' +
-      '<button class="btn ghost" type="button" id="create-key">生成密钥</button></div>') +
     card('设备', table(['用户', '设备', '角色', '状态', '操作'], 'devices', '还没有设备接入')) +
     card('最近审计', table(['时间', '操作者', '动作'], 'audit', '暂无审计记录')) +
     '</div><aside>' +
-    card('说明', '<p class="muted small" style="margin:0 0 12px">用户、密钥、设备与审计都在本页；域名、OIDC、SMTP 与限额在「设置」。</p>' +
-      '<a class="btn ghost block" href="/admin/settings">前往设置</a>') +
-    card('安全提示', '<p class="muted small" style="margin:0">吊销密钥会让用它接入的设备立即掉线，且同一设备 ID 无法重新接入；删除用户会同时吊销其全部设备与会话。</p>') +
-    '</aside></div></main>' + keyDialog +
+    card('权限边界', '<p class="muted small" style="margin:0 0 10px">管理员只能<b>创建、禁用、删除</b>普通用户。管理员账号本身不可禁用或删除。</p>' +
+      '<p class="muted small" style="margin:0">设备密钥、设备列表与密码均由用户在自己的「我的账户」里管理，管理员无法代为操作或查看。</p>' +
+      '<a class="btn ghost block" style="margin-top:12px" href="/admin/settings">前往设置</a>') +
+    card('安全提示', '<p class="muted small" style="margin:0">删除用户会同时吊销其全部设备与会话，且不可恢复。</p>') +
+    '</aside></div></main>' +
     '<script>' +
-    'var currentUser=null;' +
     'function emptyRow(n,t){return \'<tr><td colspan="\'+n+\'" class="muted">\'+t+\'</td></tr>\'}' +
     'function $(id){return document.getElementById(id)}' +
     'function loadUsers(){return dshApi("/api/v1/admin/users").then(function(r){var rows=r.body.users||[];$("userCount").textContent=rows.length;' +
-    '$("rows").innerHTML=rows.length?rows.map(function(u){var name=dshEsc(u.username);return \'<tr><td>\'+name+\'</td><td class="mono small">\'+dshEsc(u.deviceUsername||"-")+\'</td><td>\'+dshEsc(u.role)+\'</td><td>\'+u.deviceKeys+\'</td><td><div class="actions">\'+' +
-    '\'<button class="btn ghost sm" data-a="pick" data-id="\'+dshEsc(u.id)+\'" data-name="\'+dshEsc(u.deviceUsername||u.username)+\'" aria-label="查看 \'+name+\' 的设备密钥">密钥</button>\'+' +
-    '\'<button class="btn ghost sm" data-a="toggle" data-id="\'+dshEsc(u.id)+\'" aria-label="\'+(u.disabled?"启用":"禁用")+\' \'+name+\'">\'+(u.disabled?"启用":"禁用")+\'</button>\'+' +
-    '\'<button class="btn danger sm" data-a="del" data-id="\'+dshEsc(u.id)+\'" data-name="\'+name+\'" aria-label="删除 \'+name+\'">删除</button></div></td></tr>\'}).join(""):emptyRow(5,"还没有用户")})}' +
-    'function loadKeys(){var t=$("keys");if(!currentUser){t.innerHTML=emptyRow(4,"先在用户行点「密钥」选择用户");return}' +
-    'dshApi("/api/v1/admin/users/"+encodeURIComponent(currentUser.id)+"/device-keys").then(function(r){var ks=r.body.keys||[];' +
-    't.innerHTML=ks.length?ks.map(function(k){return \'<tr><td>\'+dshEsc(k.label)+\'</td><td><span class="badge">\'+k.deviceCount+\'</span></td><td>\'+(k.revoked?\'<span class="badge off">已吊销</span>\':\'<span class="badge ok">正常</span>\')+\'</td><td>\'+(k.revoked||k.id==="unbound"?"":\'<button class="btn danger sm" data-a="revoke" data-id="\'+dshEsc(k.id)+\'" aria-label="吊销密钥 \'+dshEsc(k.label)+\'">吊销</button>\')+\'</td></tr>\'}).join(""):emptyRow(4,"该用户还没有密钥")})}' +
+    '$("rows").innerHTML=rows.length?rows.map(function(u){var name=dshEsc(u.username);var admin=u.role==="admin";' +
+    'return \'<tr><td>\'+name+(admin?\' <span class="badge">管理员</span>\':\'\')+\'</td><td class="mono small">\'+dshEsc(u.deviceUsername||"-")+\'</td><td>\'+dshEsc(u.role)+\'</td><td>\'+u.deviceKeys+\'</td><td>\'+' +
+    '(admin?\'<span class="muted small">受保护</span>\':\'<div class="actions"><button class="btn ghost sm" data-a="toggle" data-id="\'+dshEsc(u.id)+\'" aria-label="\'+(u.disabled?"启用":"禁用")+\' \'+name+\'">\'+(u.disabled?"启用":"禁用")+\'</button>\'+' +
+    '\'<button class="btn danger sm" data-a="del" data-id="\'+dshEsc(u.id)+\'" data-name="\'+name+\'" aria-label="删除 \'+name+\'">删除</button></div>\')+\'</td></tr>\'}).join(""):emptyRow(5,"还没有用户")})}' +
     'function loadDevices(){dshApi("/api/v1/admin/devices").then(function(r){var xs=r.body.items||[];' +
     '$("devices").innerHTML=xs.length?xs.map(function(x){return \'<tr><td>\'+dshEsc(x.username)+\'</td><td>\'+dshEsc(x.name)+\'</td><td>\'+dshEsc(x.role)+\'</td><td>\'+(x.revoked?\'<span class="badge off">已吊销</span>\':(x.online?\'<span class="badge ok">在线</span>\':\'<span class="badge">离线</span>\'))+\'</td><td>\'+(x.revoked?"":\'<button class="btn danger sm" data-a="revoke-device" data-id="\'+dshEsc(x.deviceId)+\'" data-name="\'+dshEsc(x.name)+\'">吊销</button>\')+\'</td></tr>\'}).join(""):emptyRow(5,"还没有设备接入")})}' +
     'function loadAudit(){dshApi("/api/v1/admin/audit?limit=20").then(function(r){var xs=r.body.items||[];' +
     '$("audit").innerHTML=xs.length?xs.map(function(x){return \'<tr><td class="muted small">\'+dshEsc(new Date(x.at).toLocaleString())+\'</td><td>\'+dshEsc(x.actor||"-")+\'</td><td>\'+dshEsc(x.action)+\'</td></tr>\'}).join(""):emptyRow(3,"暂无审计记录")})}' +
     'document.addEventListener("click",function(e){var b=e.target.closest?e.target.closest("button[data-a]"):null;if(!b)return;var id=b.getAttribute("data-id"),a=b.getAttribute("data-a");' +
-    'if(a==="pick"){currentUser={id:id,deviceUsername:b.getAttribute("data-name")};$("keyOwner").textContent=currentUser.deviceUsername;loadKeys()}' +
-    'else if(a==="toggle"){dshApi("/api/v1/admin/users/"+encodeURIComponent(id),{method:"PATCH",headers:{"content-type":"application/json"},body:JSON.stringify({toggle:true})}).then(loadUsers)}' +
-    'else if(a==="del"){if(!confirm("删除用户 "+b.getAttribute("data-name")+"？该用户的设备与会话会立即失效，且不可恢复。"))return;dshDel("/api/v1/admin/users/"+encodeURIComponent(id)).then(function(r){dshToast(r.ok?"已删除":dshErr(r.body.error&&r.body.error.code,r.status),r.ok?"ok":"err");loadUsers()})}' +
-    'else if(a==="revoke"){if(!confirm("吊销这把密钥？用它注册的设备会立即掉线，且无法用同一设备 ID 重新接入。"))return;dshDel("/api/v1/admin/device-keys/"+encodeURIComponent(id)).then(function(r){dshToast(r.ok?"已吊销":dshErr(r.body.error&&r.body.error.code,r.status),r.ok?"ok":"err");loadKeys();loadUsers()})}' +
-    'else if(a==="revoke-device"){if(!confirm("吊销设备 "+b.getAttribute("data-name")+"？它会立即断开。"))return;dshDel("/api/v1/admin/devices/"+encodeURIComponent(id)).then(function(r){dshToast(r.ok?"已吊销":dshErr(r.body.error&&r.body.error.code,r.status),r.ok?"ok":"err");loadDevices()})}});' +
-    'function showKey(key){$("keyvalue").textContent=key;var d=$("keydlg");d.showModal();$("keycopy").onclick=function(){dshCopy(key)};$("keydone").onclick=function(){d.close()}}' +
+    'if(a==="toggle"){dshApi("/api/v1/admin/users/"+encodeURIComponent(id),{method:"PATCH",headers:{"content-type":"application/json"},body:JSON.stringify({toggle:true})}).then(function(r){' +
+    'if(!r.ok)dshToast(dshErr(r.body.error&&r.body.error.code,r.status),"err");loadUsers()})}' +
+    'else if(a==="del"){if(!confirm("删除用户 "+b.getAttribute("data-name")+"？该用户的设备与会话会立即失效，且不可恢复。"))return;dshDel("/api/v1/admin/users/"+encodeURIComponent(id)).then(function(r){' +
+    'dshToast(r.ok?"已删除":dshErr(r.body.error&&r.body.error.code,r.status),r.ok?"ok":"err");loadUsers()})}' +
+    'else if(a==="revoke-device"){if(!confirm("吊销设备 "+b.getAttribute("data-name")+"？它会立即断开。"))return;dshDel("/api/v1/admin/devices/"+encodeURIComponent(id)).then(function(r){' +
+    'dshToast(r.ok?"已吊销":dshErr(r.body.error&&r.body.error.code,r.status),r.ok?"ok":"err");loadDevices()})}});' +
     '$("create-user").onclick=function(){dshPost("/api/v1/admin/users",{username:$("nu").value.trim(),password:$("np").value||undefined,role:$("nr").value}).then(function(r){' +
-    'if(r.ok){dshToast("用户已创建","ok");if(r.body.deviceKey)showKey(r.body.deviceKey);$("nu").value="";$("np").value="";loadUsers()}else dshToast(dshErr(r.body.error&&r.body.error.code,r.status),"err")})};' +
-    '$("create-key").onclick=function(){if(!currentUser)return dshToast("先在用户行点「密钥」选择用户","err");' +
-    'dshPost("/api/v1/admin/users/"+encodeURIComponent(currentUser.id)+"/device-keys",{label:$("key-label").value.trim()||"device"}).then(function(r){' +
-    'if(r.ok){showKey(r.body.key);$("key-label").value="";loadKeys();loadUsers()}else dshToast(dshErr(r.body.error&&r.body.error.code,r.status),"err")})};' +
-    'loadUsers();loadKeys();loadDevices();loadAudit();' +
+    'if(r.ok){dshToast("用户已创建，设备密钥由用户自行生成","ok");$("nu").value="";$("np").value="";loadUsers()}else dshToast(dshErr(r.body.error&&r.body.error.code,r.status),"err")})};' +
+    'loadUsers();loadDevices();loadAudit();' +
     '</script>', background, 'console')
 }
 

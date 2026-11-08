@@ -67,7 +67,8 @@ export class Runtime {
       },
       ui: { backgroundUrl: DEFAULT_BACKGROUND_URL },
       ice: {
-        stunUrls: (process.env.DSH_SERVER_STUN_URLS ?? '').split(',').map(v => v.trim()).filter(Boolean),
+        // Cloudflare's public STUN server is the sane default; empty means "no STUN".
+        stunUrls: ((v) => v.length ? v : ['stun:stun.cloudflare.com:3478'])((process.env.DSH_SERVER_STUN_URLS ?? '').split(',').map(v => v.trim()).filter(Boolean)),
         turnUrls: (process.env.DSH_SERVER_TURN_URLS ?? '').split(',').map(v => v.trim()).filter(Boolean),
         turnSecret: process.env.DSH_SERVER_TURN_SECRET ?? '',
         turnUsername: process.env.DSH_SERVER_TURN_USERNAME ?? '',

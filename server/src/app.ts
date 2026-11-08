@@ -800,46 +800,28 @@ export function createApp(settings: Settings, deps: { pool?: Pool; mailer?: Mail
           throw new ApiError(String(error?.code) === '23505' ? 'USER_EXISTS' : 'INVALID_MESSAGE', 409)
         })
         await store.audit('user.created', admin.username, created.user.id, { role })
-        return json(res, 201, { user: { id: created.user.id, username, role }, deviceKey: created.deviceKey })
-      }
-      const keysPath = /^\/api\/v1\/admin\/users\/([0-9a-f-]{36})\/device-keys$/.exec(path)
-      if (keysPath) {
-        if (method === 'GET') return json(res, 200, { keys: await store.listDeviceKeys(keysPath[1]!) })
-        if (method === 'POST') {
-          const input = await body(req)
-          const key = await store.createDeviceKey(keysPath[1]!, String(input.label ?? 'device'))
-          await store.audit('device_key.created', admin.username, keysPath[1], { keyId: key.id })
-          return json(res, 201, key)
-        }
-      }
-      const revokePath = /^\/api\/v1\/admin\/device-keys\/([0-9a-f-]{36})$/.exec(path)
-      if (method === 'DELETE' && revokePath) {
-        await store.revokeDeviceKey(revokePath[1]!).catch(() => { throw new ApiError('DEVICE_KEY_NOT_FOUND', 404) })
-        await store.audit('device_key.revoked', admin.username, undefined, { keyId: revokePath[1] })
-        return json(res, 200, { status: 'revoked' })
+        // The first device key belongs to the user; administrators never see it.
+        return json(res, 201, { user: { id: created.user.id, username, role } })
       }
       const match = /^\/api\/v1\/admin\/users\/([0-9a-f-]{36})(\/device-key)?$/.exec(path)
       if (match) {
         const id = match[1]!
-        if (method === 'POST' && match[2]) {
-          const deviceKey = await store.rotateDeviceKey(id)
-          await store.audit('user.device_key_rotated', admin.username, id)
-          return json(res, 200, { deviceKey })
-        }
         if (method === 'PATCH' && !match[2]) {
           const input = await body(req)
-          if (input.toggle === true) {
-            const target = await store.findUserById(id)
-            if (!target) throw new ApiError('USER_NOT_FOUND', 404)
-            await store.setDisabled(id, !target.disabled)
-          }
-          if (typeof input.password === 'string' && input.password.length >= 12) await store.setPassword(id, input.password)
-          if (input.role === 'admin' || input.role === 'user') await pool.query('UPDATE users SET role = $2 WHERE id = $1', [id, input.role])
-          await store.audit('user.updated', admin.username, id)
+          const target = await store.findUserById(id)
+          if (!target) throw new ApiError('USER_NOT_FOUND', 404)
+          // Administrators are immutable from the console: no disable, no password
+          // reset, no role change. Only their own credentials changes apply.
+          if (target.role === 'admin') throw new ApiError('ADMIN_PROTECTED', 409)
+          if (input.toggle === true) await store.setDisabled(id, !target.disabled)
+          await store.audit('user.updated', admin.username, id, { disabled: !target.disabled })
           return json(res, 200, { status: 'ok' })
         }
         if (method === 'DELETE' && !match[2]) {
           if (id === admin.id) throw new ApiError('CANNOT_DELETE_SELF', 409)
+          const target = await store.findUserById(id)
+          if (!target) throw new ApiError('USER_NOT_FOUND', 404)
+          if (target.role === 'admin') throw new ApiError('ADMIN_PROTECTED', 409)
           await store.deleteUser(id)
           await store.audit('user.deleted', admin.username, id)
           return json(res, 200, { status: 'deleted' })
@@ -865,6 +847,26 @@ export function createApp(settings: Settings, deps: { pool?: Pool; mailer?: Mail
       await store.audit('device.registered', user.username, user.id, { deviceId: input.device.deviceId })
       return json(res, 200, await store.register(user.id, input.device, ticket?.keyId))
     }
+    // Device keys belong to the account owner: only the owner may list, create
+    // or revoke them, and the plaintext can be revealed again at any time.
+    if (path === '/api/v1/account/device-keys' && (method === 'GET' || method === 'POST')) {
+      const user = await requireUser(req)
+      if (method === 'GET') return json(res, 200, { keys: await store.listDeviceKeys(user.id) })
+      const input = await body(req)
+      const key = await store.createDeviceKey(user.id, String(input.label ?? 'device'))
+      await store.audit('device_key.created', user.username, user.id, { keyId: key.id })
+      return json(res, 201, key)
+    }
+    const ownKey = /^\/api\/v1\/account\/device-keys\/([0-9a-f-]{36})$/.exec(path)
+    if (method === 'DELETE' && ownKey) {
+      const user = await requireUser(req)
+      const owned = (await store.listDeviceKeys(user.id)).some(k => k.id === ownKey[1])
+      if (!owned) throw new ApiError('DEVICE_KEY_NOT_FOUND', 404)
+      await store.revokeDeviceKey(ownKey[1]!, user.id)
+      await store.audit('device_key.revoked', user.username, user.id, { keyId: ownKey[1] })
+      return json(res, 200, { status: 'revoked' })
+    }
+
     // Web sessions read their own device list here; the bearer branch below
     // serves the same shape to enrolled devices.
     if (method === 'GET' && path === '/api/v1/account/devices' && !bearer(req)) {

@@ -85,6 +85,6 @@ The console adds two switches: `autoProvision` (create accounts for unknown mail
 
 ## ICE
 
-`DSH_SERVER_STUN_URLS` and `DSH_SERVER_TURN_URLS` are handed to clients through
+STUN defaults to `stun:stun.cloudflare.com:3478` when unset. `DSH_SERVER_STUN_URLS` and `DSH_SERVER_TURN_URLS` are handed to clients through
 `GET /api/v1/turn/credentials`. TURN accepts either a coturn REST shared secret
 (`DSH_SERVER_TURN_SECRET`) or a static username/password pair. Empty values keep relay-only behaviour.

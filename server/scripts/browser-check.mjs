@@ -98,29 +98,24 @@ await page.fill('#np', 'alice-password-123')
 await page.click('#create-user')
 await page.waitForFunction(() => document.getElementById('rows').innerText.includes('alice@example.com'), { timeout: 8000 })
 check('create user from UI', true)
-// creating a user returns its first device key: capture then dismiss
-if (await page.locator('#keydlg[open]').count()) {
-  await page.screenshot({ path: '/tmp/bv/shots/05a-first-key.png' })
-  await page.click('#keydone')
-  check('user creation reveals first key', true)
-} else {
-  check('user creation reveals first key', false, 'dialog did not open')
-}
 
-// 8. device key dialog with copy affordance
-await page.locator('button[data-a=pick]').first().click()
+// The admin console must not expose key management at all.
+check('admin console has no key card', (await page.locator('#key-label').count()) === 0)
+
+// 8. the owner manages keys on their own account page
+await page.goto(BASE + '/account', { waitUntil: 'domcontentloaded' })
+await page.waitForFunction(() => document.querySelectorAll('#keys .sk').length === 0, { timeout: 10000 }).catch(() => {})
+check('account page renders', await page.locator('#main').isVisible())
+const initialKeys = await page.locator('#keys tr').count()
+check('account lists the default key', initialKeys >= 1, 'rows=' + initialKeys)
 await page.fill('#key-label', '客厅 iPad')
 await page.click('#create-key')
-await page.waitForSelector('#keydlg[open]', { timeout: 8000 })
-const keyText = (await page.locator('#keyvalue').innerText()).trim()
-check('key dialog shows key once', keyText.length > 20, keyText.slice(0, 8) + '…')
-check('key dialog has copy button', await page.locator('#keycopy').isVisible())
-await page.screenshot({ path: '/tmp/bv/shots/05-key-dialog.png' })
-await page.click('#keydone')
-
-// 9. account page
-await page.goto(BASE + '/account', { waitUntil: 'domcontentloaded' })
-check('account page renders', await page.locator('#main').isVisible())
+await page.waitForFunction(() => document.querySelectorAll('#keys button[data-a="reveal"]').length >= 2, { timeout: 8000 }).catch(() => {})
+check('owner can create a key', (await page.locator('#keys button[data-a="reveal"]').count()) >= 2)
+await page.locator('#keys button[data-a="reveal"]').first().click()
+const revealed = (await page.locator('#keys .keymask').first().innerText()).trim()
+check('key can be revealed on demand', revealed.length > 20 && !revealed.includes('•'), revealed.slice(0, 8) + '…')
+await page.screenshot({ path: '/tmp/bv/shots/05-account-keys.png' })
 await page.screenshot({ path: '/tmp/bv/shots/06-account.png', fullPage: true })
 
 // 10. mobile viewport

@@ -1,6 +1,6 @@
 import { Pool } from 'pg'
 import { SCHEMA_NORMALISE, SCHEMA_STATEMENTS } from './schema.js'
-import { createHash, createHmac, randomBytes, randomInt, randomUUID, scrypt, scryptSync, timingSafeEqual } from 'node:crypto'
+import { createCipheriv, createDecipheriv, createHash, createHmac, hkdfSync, randomBytes, randomInt, randomUUID, scrypt, scryptSync, timingSafeEqual } from 'node:crypto'
 
 export class ApiError extends Error {
   constructor(readonly code: string, readonly status = 400) { super(code) }
@@ -245,23 +245,25 @@ export class Store {
   async createDeviceKey(userId: string, label: string): Promise<{ id: string; label: string; key: string }> {
     const id = randomUUID()
     const key = randomToken()
-    await this.pool.query('INSERT INTO device_keys (id, user_id, label, key_hash) VALUES ($1,$2,$3,$4)',
-      [id, userId, label.slice(0, 64) || 'device', digest(key)])
+    await this.pool.query('INSERT INTO device_keys (id, user_id, label, key_hash, secret) VALUES ($1,$2,$3,$4,$5)',
+      [id, userId, label.slice(0, 64) || 'device', digest(key), await this.sealSecret(key)])
     return { id, label, key }
   }
 
   async listDeviceKeys(userId: string): Promise<Array<{ id: string; label: string; revoked: boolean; createdAt: string; lastUsedAt: string | null; deviceCount: number }>> {
     const keys = await this.pool.query(
-      'SELECT id, label, revoked, created_at, last_used_at FROM device_keys WHERE user_id = $1 ORDER BY created_at, id', [userId])
+      'SELECT id, label, revoked, created_at, last_used_at, secret FROM device_keys WHERE user_id = $1 ORDER BY created_at, id', [userId])
     const counts = await this.pool.query(
       "SELECT device_key_id, count(*)::int AS n FROM devices WHERE user_id = $1 AND revoked = false AND device_key_id IS NOT NULL GROUP BY device_key_id", [userId])
     const byKey = new Map<string, number>()
     for (const row of counts.rows) byKey.set(row.device_key_id, row.n)
-    const listed = keys.rows.map((row: any) => ({
+    const listed = await Promise.all(keys.rows.map(async (row: any) => ({
       id: row.id, label: row.label, revoked: row.revoked,
       createdAt: row.created_at, lastUsedAt: row.last_used_at,
       deviceCount: byKey.get(row.id) ?? 0,
-    }))
+      // Keys created before the secret column existed cannot be revealed.
+      ...(row.revoked ? {} : { key: await this.openSecret(row.secret) }),
+    })))
     // Devices enrolled before device keys existed have no binding. Surface them
     // instead of letting the panel under-report live devices.
     const unbound = await this.pool.query(
@@ -440,6 +442,7 @@ export class Store {
   async createUser(input: { username: string; password?: string; role?: 'admin' | 'user'; email?: string; emailVerified?: boolean }): Promise<{ user: UserRow; deviceKey: string }> {
     const deviceKey = randomToken()
     const deviceUsername = await this.uniqueDeviceUsername()
+    const sealed = await this.sealSecret(deviceKey)
     const client = await this.pool.connect()
     try {
       await client.query('BEGIN')
@@ -447,8 +450,8 @@ export class Store {
         'INSERT INTO users (id, username, email, email_verified, role, password_hash, device_key_hash, device_username) VALUES ($1,$2,$3,$4,$5,$6,$7,$8) RETURNING *',
         [randomUUID(), input.username.trim().toLowerCase(), input.email ? input.email.trim().toLowerCase() : null, input.emailVerified === true,
          input.role ?? 'user', input.password ? hashPassword(input.password) : null, digest(deviceKey), deviceUsername])
-      await client.query('INSERT INTO device_keys (id, user_id, label, key_hash) VALUES ($1,$2,$3,$4)',
-        [randomUUID(), result.rows[0].id, 'default', digest(deviceKey)])
+      await client.query('INSERT INTO device_keys (id, user_id, label, key_hash, secret) VALUES ($1,$2,$3,$4,$5)',
+        [randomUUID(), result.rows[0].id, 'default', digest(deviceKey), sealed])
       await client.query('COMMIT')
       return { user: result.rows[0], deviceKey }
     } catch (error) {
@@ -472,11 +475,12 @@ export class Store {
       if (count.rows[0].n > 0) { await client.query('ROLLBACK'); throw new ApiError('SETUP_CLOSED', 409) }
       const deviceKey = randomToken()
       const deviceUsername = 'dev-' + randomUUID().replace(/-/g, '').slice(0, 10)
+      const sealedAdminKey = await this.sealSecret(deviceKey)
       const inserted = await client.query(
         'INSERT INTO users (id, username, role, password_hash, device_key_hash, device_username) VALUES ($1,$2,$3,$4,$5,$6) RETURNING *',
         [randomUUID(), username, 'admin', hashPassword(password), digest(deviceKey), deviceUsername])
-      await client.query('INSERT INTO device_keys (id, user_id, label, key_hash) VALUES ($1,$2,$3,$4)',
-        [randomUUID(), inserted.rows[0].id, 'default', digest(deviceKey)])
+      await client.query('INSERT INTO device_keys (id, user_id, label, key_hash, secret) VALUES ($1,$2,$3,$4,$5)',
+        [randomUUID(), inserted.rows[0].id, 'default', digest(deviceKey), sealedAdminKey])
       await client.query('COMMIT')
       return { user: inserted.rows[0], deviceKey }
     } catch (error) {
@@ -515,11 +519,12 @@ export class Store {
     const hash = digest(deviceKey)
     const existing = await this.pool.query(
       "SELECT id FROM device_keys WHERE user_id = $1 AND label = 'default' AND revoked = false LIMIT 1", [userId])
+    const sealed = await this.sealSecret(deviceKey)
     if (existing.rows[0]) {
-      await this.pool.query('UPDATE device_keys SET key_hash = $2, last_used_at = NULL WHERE id = $1', [existing.rows[0].id, hash])
+      await this.pool.query('UPDATE device_keys SET key_hash = $2, secret = $3, last_used_at = NULL WHERE id = $1', [existing.rows[0].id, hash, sealed])
     } else {
-      await this.pool.query('INSERT INTO device_keys (id, user_id, label, key_hash) VALUES ($1,$2,$3,$4)',
-        [randomUUID(), userId, 'default', hash])
+      await this.pool.query('INSERT INTO device_keys (id, user_id, label, key_hash, secret) VALUES ($1,$2,$3,$4,$5)',
+        [randomUUID(), userId, 'default', hash, sealed])
     }
     await this.pool.query('UPDATE users SET device_key_hash = $2 WHERE id = $1', [userId, hash])
     return deviceKey
@@ -635,6 +640,29 @@ export class Store {
     await this.setSetting('code_secret', { key })
     this.codeSecret = key
     return key
+  }
+  private deviceKeyCrypto?: Buffer
+  /** AES-256-GCM key derived from the server secret: owners must be able to reveal keys. */
+  private async deviceKeyKey(): Promise<Buffer> {
+    if (this.deviceKeyCrypto) return this.deviceKeyCrypto
+    const material = Buffer.from(await this.codeKey(), 'utf8')
+    this.deviceKeyCrypto = Buffer.from(hkdfSync('sha256', material, Buffer.alloc(0), 'dsh.device-key', 32))
+    return this.deviceKeyCrypto
+  }
+  private async sealSecret(plain: string): Promise<string> {
+    const iv = randomBytes(12)
+    const cipher = createCipheriv('aes-256-gcm', await this.deviceKeyKey(), iv)
+    const body = Buffer.concat([cipher.update(plain, 'utf8'), cipher.final()])
+    return Buffer.concat([iv, cipher.getAuthTag(), body]).toString('base64')
+  }
+  private async openSecret(sealed: string | null | undefined): Promise<string | undefined> {
+    if (!sealed) return undefined
+    try {
+      const raw = Buffer.from(sealed, 'base64')
+      const decipher = createDecipheriv('aes-256-gcm', await this.deviceKeyKey(), raw.subarray(0, 12))
+      decipher.setAuthTag(raw.subarray(12, 28))
+      return Buffer.concat([decipher.update(raw.subarray(28)), decipher.final()]).toString('utf8')
+    } catch { return undefined }
   }
   private async codeDigest(code: string, email: string, purpose: string): Promise<string> {
     return createHmac('sha256', await this.codeKey()).update(code + ':' + email + ':' + purpose).digest('hex')

@@ -63,26 +63,38 @@ const adminHtml = String((await req('/admin', { headers: { cookie: adminCookie }
 const settingsRes = await req('/admin/settings', { headers: { cookie: adminCookie } })
 const settingsHtml = String(settingsRes.body)
 check('session device list', (await req('/api/v1/account/devices', { headers: { cookie: adminCookie } })).status === 200)
+const adminRow = await req('/api/v1/admin/users', { method: 'POST', headers: { 'content-type': 'application/json', cookie: adminCookie }, body: JSON.stringify({ username: 'second-admin@example.com', password: 'second-admin-123', role: 'admin' }) })
+const adminId = adminRow.body.user && adminRow.body.user.id
+const disableAdmin = await req('/api/v1/admin/users/' + adminId, { method: 'PATCH', headers: { 'content-type': 'application/json', cookie: adminCookie }, body: JSON.stringify({ toggle: true }) })
+const deleteAdmin = await req('/api/v1/admin/users/' + adminId, { method: 'DELETE', headers: { cookie: adminCookie } })
+const resetAdminPw = await req('/api/v1/admin/users/' + adminId, { method: 'PATCH', headers: { 'content-type': 'application/json', cookie: adminCookie }, body: JSON.stringify({ password: 'hijacked-password' }) })
+check('admin accounts cannot be disabled', disableAdmin.status === 409 && disableAdmin.body.error.code === 'ADMIN_PROTECTED', String(disableAdmin.status))
+check('admin accounts cannot be deleted', deleteAdmin.status === 409 && deleteAdmin.body.error.code === 'ADMIN_PROTECTED', String(deleteAdmin.status))
+check('admin password reset removed', resetAdminPw.status === 409, String(resetAdminPw.status))
+const adminKeyApi = await req('/api/v1/admin/users/' + adminId + '/device-keys', { headers: { cookie: adminCookie } })
+const adminKeyPost = await req('/api/v1/admin/users/' + adminId + '/device-keys', { method: 'POST', headers: { 'content-type': 'application/json', cookie: adminCookie }, body: JSON.stringify({ label: 'x' }) })
+check('admin key APIs are gone', adminKeyApi.status === 404 && adminKeyPost.status === 404, adminKeyApi.status + '/' + adminKeyPost.status)
+
 check('admin page has section tabs', adminHtml.includes('class="subnav"') && adminHtml.includes('href="/admin/settings"'))
 check('tables start with skeleton rows', adminHtml.includes('class="sk"') && adminHtml.includes('aria-busy="true"'))
 check('admin settings page', settingsRes.status === 200 && settingsHtml.includes('id="server"') && settingsHtml.includes('class="anchors"'))
 check('settings page keeps oidc fields', settingsHtml.includes('id="issuer"') && settingsHtml.includes('id="smtp-host"'))
 
 const created = await req('/api/v1/admin/users', { method: 'POST', headers: { 'content-type': 'application/json', cookie: adminCookie }, body: JSON.stringify({ username: 'alice', password: 'alice-password-123', role: 'user' }) })
-check('admin creates alice', created.status === 201 && typeof created.body.deviceKey === 'string')
+check('admin creates alice', created.status === 201 && created.body.deviceKey === undefined, 'no key handed to the admin')
 const bob = await req('/api/v1/admin/users', { method: 'POST', headers: { 'content-type': 'application/json', cookie: adminCookie }, body: JSON.stringify({ username: 'bob', password: 'bob-password-123', role: 'user' }) })
-check('admin creates bob', bob.status === 201 && typeof bob.body.deviceKey === 'string')
+check('admin creates bob', bob.status === 201 && bob.body.deviceKey === undefined)
 
-async function deviceFor(username, key, deviceId) {
-  const ticket = await req('/api/v1/auth/login', { method: 'POST', ...json({ username, password: key }) })
-  const registered = await req('/api/v1/devices/register', {
-    method: 'POST', headers: { 'content-type': 'application/json', authorization: 'Bearer ' + ticket.body.token },
-    body: JSON.stringify({ v: 1, device: { deviceId, name: username + ' host', role: 'host', identityKey: (username[0] || 'x').repeat(32) } }),
+// Users enrol with their own password: the console never mints keys for them.
+async function deviceFor(username, password, deviceId) {
+  const registered = await req('/api/v1/auth/device-login', {
+    method: 'POST', headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ username, deviceKey: password, device: { deviceId, name: username + ' host', role: 'host', identityKey: (username[0] || 'x').repeat(32) } }),
   })
-  return { ticket: ticket.body.token, access: registered.body.accessToken, status: registered.status }
+  return { access: registered.body.accessToken, status: registered.status }
 }
-const alice = await deviceFor('alice', created.body.deviceKey, 'alice-host-1')
-const bobDevice = await deviceFor('bob', bob.body.deviceKey, 'bob-host-1')
+const alice = await deviceFor('alice', 'alice-password-123', 'alice-host-1')
+const bobDevice = await deviceFor('bob', 'bob-password-123', 'bob-host-1')
 check('both tenants registered a device', alice.status === 200 && bobDevice.status === 200)
 
 const aliceAuth = { authorization: 'Bearer ' + alice.access }
@@ -97,7 +109,7 @@ check('cross-tenant presence is 404', foreignPresence.status === 404, String(for
 check('cross-tenant rename is 404', foreignRename.status === 404, String(foreignRename.status))
 
 const replayTicket = await req('/api/v1/devices/register', {
-  method: 'POST', headers: { 'content-type': 'application/json', authorization: 'Bearer ' + alice.ticket },
+  method: 'POST', headers: { 'content-type': 'application/json', authorization: 'Bearer ' + 'not-a-ticket' },
   body: JSON.stringify({ v: 1, device: { deviceId: 'alice-host-2', name: 'second', role: 'host', identityKey: 'z'.repeat(32) } }),
 })
 check('registration ticket is single use', replayTicket.status === 401, String(replayTicket.status))
