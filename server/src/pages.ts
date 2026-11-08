@@ -1,73 +1,81 @@
 // DSH Remote UI
 
 const CSS = [
-  ':root{--phi:1.618;--s1:8px;--s2:13px;--s3:21px;--s4:34px;--bg:#0a0d13;--surface:#111722;--surface2:#161e2c;--line:#22304a;--text:#e7eef8;--muted:#8d9bb1;--accent:#3f6fe0;--accent-deep:#3157c9;--accent2:#8fb0ff;--ok:#3fb950;--warn:#d29922;--danger:#f85149;--radius:16px;--r-sm:10px;--shadow:0 18px 50px rgba(0,0,0,.45);--ring:0 0 0 3px rgba(63,111,224,.28);--overlay:rgba(6,9,14,.72);--overlay-2:rgba(6,9,14,.92);--on-accent:#fff;color-scheme:dark}',
-  '@media (prefers-color-scheme:light){:root{--bg:#f5f7fb;--surface:#fff;--surface2:#f0f3f9;--line:#dde3ee;--text:#101623;--muted:#5d6b82;--accent:#2f5cc4;--accent-deep:#24479c;--accent2:#2f5cc4;--ok:#1a7f37;--warn:#9a6700;--danger:#cf222e;--shadow:0 12px 32px rgba(16,22,35,.10);--ring:0 0 0 3px rgba(47,92,196,.2);--overlay:rgba(245,247,251,.82);--overlay-2:rgba(245,247,251,.94);color-scheme:light}}',
-  '[data-theme=light]{--bg:#f5f7fb;--surface:#fff;--surface2:#f0f3f9;--line:#dde3ee;--text:#101623;--muted:#5d6b82;--accent:#2f5cc4;--accent-deep:#24479c;--accent2:#2f5cc4;--ok:#1a7f37;--warn:#9a6700;--danger:#cf222e;--shadow:0 12px 32px rgba(16,22,35,.10);--ring:0 0 0 3px rgba(47,92,196,.2);--overlay:rgba(245,247,251,.82);--overlay-2:rgba(245,247,251,.94);color-scheme:light}',
-  '[data-theme=dark]{--bg:#0a0d13;--surface:#111722;--surface2:#161e2c;--line:#22304a;--text:#e7eef8;--muted:#8d9bb1;--accent:#3f6fe0;--accent-deep:#3157c9;--accent2:#8fb0ff;--ok:#3fb950;--warn:#d29922;--danger:#f85149;--shadow:0 18px 50px rgba(0,0,0,.45);--ring:0 0 0 3px rgba(63,111,224,.28);--overlay:rgba(6,9,14,.72);--overlay-2:rgba(6,9,14,.92);color-scheme:dark}',
+  // 设计 tokens 对齐 HiDNS：HSL 语义色（AA 校准）+ 8×φ^(n/2) 几何阶梯
+  ':root{--phi:1.618034;--u-1:5px;--u-2:6px;--u-3:8px;--u-4:10px;--u-5:13px;--u-6:16px;--u-7:21px;--u-8:27px;--u-9:34px;--u-10:43px;--u-11:55px;--u-12:70px;--s1:var(--u-3);--s2:var(--u-5);--s3:var(--u-7);--s4:var(--u-9);--radius:8px;--r-sm:6px;--h-control:34px;--h-control-sm:27px;--h-control-lg:43px;--pad-card:var(--u-8);--gap-card:var(--u-6);--gap-section:var(--u-10);',
+  '--bg:0 0% 100%;--surface:0 0% 100%;--surface-2:210 40% 96%;--line:215 22% 84%;--input-line:215 20% 58%;--text:222 47% 11%;--muted:215 20% 40%;--primary:199 89% 35%;--primary-fg:0 0% 100%;--danger:0 72% 45%;--ok:145 63% 30%;--warn:38 92% 32%;--ring:199 89% 35%;--scrim-rgb:255 255 255;--scrim-alpha:.72;--panel-alpha:1;--chrome-alpha:.92;',
+  '--shadow:0 10px 30px rgb(16 22 35 / .08);color-scheme:light}',
+  '@media (prefers-color-scheme:dark){:root{--bg:222 45% 7%;--surface:222 38% 14%;--surface-2:222 30% 18%;--line:217 28% 26%;--input-line:215 25% 46%;--text:210 40% 96%;--muted:215 20% 70%;--primary:199 89% 55%;--primary-fg:222 45% 7%;--danger:0 63% 50%;--ok:137 55% 55%;--warn:38 92% 60%;--ring:199 89% 55%;--scrim-rgb:8 13 24;--scrim-alpha:.76;--panel-alpha:.98;--shadow:0 18px 50px rgb(0 0 0 / .45);color-scheme:dark}}',
+  '[data-theme=light]{--bg:0 0% 100%;--surface:0 0% 100%;--surface-2:210 40% 96%;--line:215 22% 84%;--input-line:215 20% 58%;--text:222 47% 11%;--muted:215 20% 40%;--primary:199 89% 35%;--primary-fg:0 0% 100%;--danger:0 72% 45%;--ok:145 63% 30%;--warn:38 92% 32%;--ring:199 89% 35%;--scrim-rgb:255 255 255;--scrim-alpha:.72;--panel-alpha:1;--shadow:0 10px 30px rgb(16 22 35 / .08);color-scheme:light}',
+  '[data-theme=dark]{--bg:222 45% 7%;--surface:222 38% 14%;--surface-2:222 30% 18%;--line:217 28% 26%;--input-line:215 25% 46%;--text:210 40% 96%;--muted:215 20% 70%;--primary:199 89% 55%;--primary-fg:222 45% 7%;--danger:0 63% 50%;--ok:137 55% 55%;--warn:38 92% 60%;--ring:199 89% 55%;--scrim-rgb:8 13 24;--scrim-alpha:.76;--panel-alpha:.98;--shadow:0 18px 50px rgb(0 0 0 / .45);color-scheme:dark}',
+  // 控制台比公开页更需要背景图退成底纹
+  'html[data-surface=console]{--scrim-alpha:.8}',
+  '@media (prefers-color-scheme:dark){html[data-surface=console]{--scrim-alpha:.93}}',
+  'html[data-surface=console][data-theme=light]{--scrim-alpha:.8}',
+  'html[data-surface=console][data-theme=dark]{--scrim-alpha:.93}',
+  'html[data-bg=off] body{background-image:none}',
   '*{box-sizing:border-box}', 'html,body{height:100%}',
-  'body{margin:0;font:15px/1.6 ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,"Noto Sans SC",sans-serif;background:var(--bg);color:var(--text);-webkit-font-smoothing:antialiased}',
-  'body.has-bg{background-image:linear-gradient(180deg,var(--overlay),var(--overlay-2)),var(--bg-image);background-size:cover;background-attachment:fixed;background-position:center}',
-  'a{color:var(--accent2);text-decoration:none}a:hover{text-decoration:underline}',
+  'body{margin:0;font:15px/1.6 ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,"Noto Sans SC",sans-serif;background:hsl(var(--bg));color:hsl(var(--text));-webkit-font-smoothing:antialiased}',
+  'body.has-bg{background-image:linear-gradient(180deg,rgb(var(--scrim-rgb)/var(--scrim-alpha)),rgb(var(--scrim-rgb)/calc(var(--scrim-alpha) + .12))),var(--app-bg-image);background-size:cover;background-attachment:fixed;background-position:center}',
+  'a{color:hsl(var(--primary));text-decoration:none}a:hover{text-decoration:underline}',
   'h1,h2,h3{margin:0;font-weight:650;letter-spacing:-.015em}h1{font-size:clamp(24px,2.6vw,30px)}h2{font-size:19px}h3{font-size:15px}',
   '.lead{font-size:clamp(26px,3.4vw,40px);line-height:1.15;font-weight:650;letter-spacing:-.02em;margin:0}',
   '.mono{font-family:ui-monospace,SFMono-Regular,Menlo,monospace}',
-  '.muted{color:var(--muted)}.small{font-size:12.5px}',
-  '.skip{position:absolute;left:-9999px;top:0}.skip:focus{left:12px;top:12px;z-index:99;background:var(--surface);border:1px solid var(--line);border-radius:8px;padding:8px 12px}',
-  ':focus-visible{outline:2px solid var(--accent2);outline-offset:2px}',
-  '.topbar{position:sticky;top:0;z-index:20;display:flex;align-items:center;gap:var(--s2);padding:14px clamp(16px,3vw,40px);backdrop-filter:blur(14px);background:color-mix(in srgb,var(--bg) 72%,transparent);border-bottom:1px solid var(--line)}',
-  '.brand{display:flex;align-items:center;gap:10px;font-weight:700;letter-spacing:-.02em}',
-  '.brand .dot{width:26px;height:26px;border-radius:9px;background:linear-gradient(135deg,var(--accent),var(--accent2));box-shadow:0 6px 18px color-mix(in srgb,var(--accent) 40%,transparent)}',
+  '.muted{color:hsl(var(--muted))}.small{font-size:12.5px}',
+  '.skip{position:absolute;left:-9999px;top:0}.skip:focus{left:12px;top:12px;z-index:99;background:hsl(var(--surface));border:1px solid hsl(var(--line));border-radius:var(--r-sm);padding:8px 12px}',
+  ':focus-visible{outline:2px solid hsl(var(--ring));outline-offset:2px}',
+  '.topbar{position:sticky;top:0;z-index:20;display:flex;align-items:center;gap:var(--s2);padding:0 clamp(var(--u-6),3vw,var(--u-9));height:var(--u-11);background:hsl(var(--bg)/var(--chrome-alpha));backdrop-filter:blur(18px);border-bottom:1px solid hsl(var(--line))}',
+  '.brand{display:flex;align-items:center;gap:var(--u-3);font-weight:700;letter-spacing:-.02em}',
+  '.brand .dot{width:26px;height:26px;border-radius:8px;background:linear-gradient(135deg,hsl(var(--primary)),hsl(var(--primary)/.65));box-shadow:0 6px 18px hsl(var(--primary)/.35)}',
   '.topbar .spacer{flex:1}',
-  '@media (max-width:560px){.topbar{gap:10px;padding:10px 14px}.topbar .who{display:none}.topbar nav a{padding:2px 0}}',
-  '.wrap{max-width:1180px;margin:0 auto;padding:clamp(18px,3vw,40px)}',
-  '.grid-phi{display:grid;grid-template-columns:var(--phi)fr 1fr;gap:var(--s4);align-items:start}',
+  '@media (max-width:560px){.topbar{gap:var(--u-2);padding:0 var(--u-4)}.topbar .who{display:none}}',
+  '.wrap{max-width:1252px;margin:0 auto;padding:var(--u-8) clamp(var(--u-6),3vw,var(--u-9))}',
+  '.grid-phi{display:grid;grid-template-columns:var(--phi)fr 1fr;gap:var(--gap-section);align-items:start}',
   '.grid-phi>*{min-width:0}',
-  '@media (max-width:900px){.grid-phi{grid-template-columns:1fr}}',
-  '.card{background:var(--surface);border:1px solid var(--line);border-radius:var(--radius);padding:var(--s3);box-shadow:var(--shadow)}',
-  '.card+.card{margin-top:var(--s3)}',
-  '.card h2{display:flex;align-items:center;justify-content:space-between;gap:10px;padding-bottom:12px;margin-bottom:14px;border-bottom:1px solid var(--line)}',
+  '@media (max-width:900px){.grid-phi{grid-template-columns:1fr;gap:var(--gap-card)}}',
+  '.card{background:hsl(var(--surface)/var(--panel-alpha));border:1px solid hsl(var(--line));border-radius:12px;padding:var(--pad-card);box-shadow:var(--shadow)}',
+  '.card+.card{margin-top:var(--gap-card)}',
+  '.card h2{display:flex;align-items:center;justify-content:space-between;gap:var(--u-4);padding-bottom:var(--u-4);margin-bottom:var(--u-4);border-bottom:1px solid hsl(var(--line))}',
   '.stack{display:flex;flex-direction:column;gap:var(--s2)}.row{display:flex;gap:var(--s1);align-items:center;flex-wrap:wrap}',
-  '.label{display:block;font-size:12.5px;font-weight:600;color:var(--muted);margin:0 0 6px;letter-spacing:.02em}',
-  '.input,select,textarea{width:100%;padding:11px 13px;border-radius:var(--r-sm);border:1px solid var(--line);background:var(--surface2);color:var(--text);font:inherit}',
-  '.input:focus,select:focus,textarea:focus{border-color:var(--accent);box-shadow:var(--ring);outline:none}',
-  '.btn{display:inline-flex;align-items:center;justify-content:center;gap:8px;min-height:40px;padding:0 18px;border-radius:var(--r-sm);border:1px solid transparent;background:linear-gradient(135deg,var(--accent),var(--accent-deep));color:var(--on-accent);font:inherit;font-weight:600;cursor:pointer;transition:filter .12s,transform .12s}',
+  '.label{display:block;font-size:12.5px;font-weight:600;color:hsl(var(--muted));margin:0 0 var(--u-2);letter-spacing:.02em}',
+  '.input,select,textarea{width:100%;height:var(--h-control);padding:0 var(--u-4);border-radius:var(--r-sm);border:1px solid hsl(var(--input-line));background:hsl(var(--surface-2));color:hsl(var(--text));font:inherit}',
+  'textarea{height:auto;padding:var(--u-3) var(--u-4)}',
+  '.input:focus,select:focus,textarea:focus{border-color:hsl(var(--ring));box-shadow:0 0 0 3px hsl(var(--ring)/.25);outline:none}',
+  '.btn{display:inline-flex;align-items:center;justify-content:center;gap:var(--u-3);height:var(--h-control);padding:0 var(--u-5);border-radius:var(--r-sm);border:1px solid transparent;background:hsl(var(--primary));color:hsl(var(--primary-fg));font:inherit;font-weight:600;cursor:pointer;transition:filter .12s,transform .12s}',
   '.btn:hover{filter:brightness(.94)}.btn:active{transform:translateY(1px)}',
   '.btn[disabled]{opacity:.55;cursor:not-allowed}',
-  '.btn.ghost{background:transparent;border-color:var(--line);color:var(--text)}',
-  '.btn.ghost:hover{background:var(--surface2)}',
-  '.btn.danger{background:transparent;border-color:color-mix(in srgb,var(--danger) 55%,transparent);color:var(--danger)}',
-  '.btn.sm{min-height:32px;padding:0 11px;font-size:12.5px;border-radius:8px}',
+  '.btn.ghost{background:transparent;border-color:hsl(var(--line));color:hsl(var(--text))}',
+  '.btn.ghost:hover{background:hsl(var(--surface-2));filter:none}',
+  '.btn.danger{background:transparent;border-color:hsl(var(--danger)/.55);color:hsl(var(--danger))}',
+  '.btn.sm{height:var(--h-control-sm);padding:0 var(--u-4);font-size:12.5px}',
   '.btn.block{width:100%}',
   '.table-wrap{overflow-x:auto;margin:0 -2px}',
   '.table{width:100%;border-collapse:collapse;min-width:480px}',
-  '.table th{font-size:11.5px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);text-align:left;padding:8px;border-bottom:1px solid var(--line)}',
-  '.table td{padding:10px 8px;border-bottom:1px solid color-mix(in srgb,var(--line) 60%,transparent);font-size:13.5px;vertical-align:middle}',
+  '.table th{font-size:11.5px;text-transform:uppercase;letter-spacing:.06em;color:hsl(var(--muted));text-align:left;padding:var(--u-3);border-bottom:1px solid hsl(var(--line))}',
+  '.table td{padding:var(--u-4) var(--u-3);border-bottom:1px solid hsl(var(--line)/.6);font-size:13.5px;vertical-align:middle}',
   '.table tr:last-child td{border-bottom:0}',
-  '.table .actions{display:flex;gap:6px;flex-wrap:wrap}',
-  '.badge{display:inline-flex;align-items:center;gap:6px;padding:3px 9px;border-radius:999px;font-size:11.5px;background:var(--surface2);border:1px solid var(--line);color:var(--muted)}',
-  '.badge.ok{color:var(--ok);border-color:color-mix(in srgb,var(--ok) 40%,transparent)}',
-  '.badge.off{color:var(--danger);border-color:color-mix(in srgb,var(--danger) 40%,transparent)}',
-  '.alert{padding:11px 14px;border-radius:var(--r-sm);border:1px solid var(--line);background:var(--surface2);font-size:13.5px}',
-  '.alert.err{border-color:color-mix(in srgb,var(--danger) 45%,transparent);color:var(--danger)}',
-  '.alert.ok{border-color:color-mix(in srgb,var(--ok) 45%,transparent);color:var(--ok)}',
-  '.hero{min-height:100dvh;display:grid;place-items:center;padding:28px}',
-  '.auth{width:min(1040px,100%);display:grid;grid-template-columns:var(--phi)fr 1fr;gap:clamp(20px,4vw,56px);align-items:center}',
+  '.table .actions{display:flex;gap:var(--u-2);flex-wrap:wrap}',
+  '.badge{display:inline-flex;align-items:center;gap:6px;padding:3px 9px;border-radius:999px;font-size:11.5px;background:hsl(var(--surface-2));border:1px solid hsl(var(--line));color:hsl(var(--muted))}',
+  '.badge.ok{color:hsl(var(--ok));border-color:hsl(var(--ok)/.4)}',
+  '.badge.off{color:hsl(var(--danger));border-color:hsl(var(--danger)/.4)}',
+  '.alert{padding:var(--u-4) var(--u-5);border-radius:var(--r-sm);border:1px solid hsl(var(--line));background:hsl(var(--surface-2));font-size:13.5px}',
+  '.alert.err{border-color:hsl(var(--danger)/.45);color:hsl(var(--danger))}',
+  '.alert.ok{border-color:hsl(var(--ok)/.45);color:hsl(var(--ok))}',
+  '.hintbar{max-width:1252px;margin:var(--u-5) auto 0;padding:0 clamp(var(--u-6),3vw,var(--u-9))}',
+  '.hintbar:empty{display:none}',
+  '.hero{min-height:100dvh;display:grid;place-items:center;padding:var(--u-8)}',
+  '.auth{width:min(1040px,100%);display:grid;grid-template-columns:var(--phi)fr 1fr;gap:clamp(var(--u-6),4vw,var(--u-11));align-items:center}',
   '@media (max-width:860px){.auth{grid-template-columns:1fr}.auth .pitch{display:none}}',
-  '.pitch p{color:var(--muted);max-width:34ch}',
-  '.panel{background:var(--surface);border:1px solid var(--line);border-radius:22px;padding:clamp(22px,3vw,34px);box-shadow:var(--shadow)}',
-  '.stat{background:var(--surface);border:1px solid var(--line);border-radius:var(--radius);padding:18px}',
+  '.pitch p{color:hsl(var(--muted));max-width:34ch}',
+  '.panel{background:hsl(var(--surface)/var(--panel-alpha));border:1px solid hsl(var(--line));border-radius:12px;padding:clamp(var(--u-7),3vw,var(--u-9));box-shadow:var(--shadow)}',
+  '.stat{background:hsl(var(--surface)/var(--panel-alpha));border:1px solid hsl(var(--line));border-radius:10px;padding:var(--u-5)}',
   '.stat .n{font-size:24px;font-weight:700;letter-spacing:-.02em;font-variant-numeric:tabular-nums}',
-  '.stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:var(--s2)}',
-  '.toast{position:fixed;right:18px;bottom:18px;z-index:60;display:flex;flex-direction:column;gap:8px;max-width:min(420px,90vw)}',
-  '.toast div{padding:11px 14px;border-radius:12px;border:1px solid var(--line);background:var(--surface);box-shadow:var(--shadow);font-size:13.5px}',
-  '.toast .err{border-color:color-mix(in srgb,var(--danger) 45%,transparent);color:var(--danger)}',
-  '.toast .ok{border-color:color-mix(in srgb,var(--ok) 45%,transparent);color:var(--ok)}',
-  '.divider{height:1px;background:var(--line);margin:16px 0}',
-  '.icon-btn{width:36px;height:36px;display:inline-grid;place-items:center;border-radius:10px;border:1px solid var(--line);background:var(--surface2);color:var(--text);cursor:pointer}',
-  '.kbd{font-family:ui-monospace,monospace;font-size:12px;padding:2px 6px;border-radius:6px;background:var(--surface2);border:1px solid var(--line)}',
-  '.code{font-family:ui-monospace,monospace;font-size:12.5px;word-break:break-all;background:var(--surface2);border:1px solid var(--line);border-radius:10px;padding:10px 12px}',
-  '.grid-2{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:var(--s2)}',
+  '.stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:var(--gap-card)}',
+  '.divider{height:1px;background:hsl(var(--line));margin:var(--u-5) 0}',
+  '.icon-btn{width:var(--h-control);height:var(--h-control);display:inline-grid;place-items:center;border-radius:var(--r-sm);border:1px solid hsl(var(--line));background:hsl(var(--surface-2));color:hsl(var(--text));cursor:pointer}',
+  '.kbd{font-family:ui-monospace,monospace;font-size:12px;padding:2px 6px;border-radius:6px;background:hsl(var(--surface-2));border:1px solid hsl(var(--line))}',
+  '.code{font-family:ui-monospace,monospace;font-size:12.5px;word-break:break-all;background:hsl(var(--surface-2));border:1px solid hsl(var(--line));border-radius:var(--r-sm);padding:var(--u-4)}',
+  '.grid-2{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:var(--gap-card)}',
   '@view-transition{navigation:auto}',
   '::view-transition-old(root){animation:vt-out .18s ease both}',
   '::view-transition-new(root){animation:vt-in .30s cubic-bezier(.2,.7,.2,1) both}',
@@ -83,8 +91,8 @@ const CSS = [
   '.card{animation:rise .34s ease both}',
   '.card:nth-of-type(2){animation-delay:.04s}.card:nth-of-type(3){animation-delay:.08s}.card:nth-of-type(4){animation-delay:.12s}',
   '@keyframes rise{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}',
-  'dialog{border:1px solid var(--line);border-radius:18px;background:var(--surface);color:var(--text);padding:22px;max-width:min(560px,92vw);box-shadow:var(--shadow)}',
-  'dialog::backdrop{background:rgba(0,0,0,.55)}',
+  'dialog{border:1px solid hsl(var(--line));border-radius:12px;background:hsl(var(--surface));color:hsl(var(--text));padding:var(--u-7);max-width:min(560px,92vw);box-shadow:var(--shadow)}',
+  'dialog::backdrop{background:rgb(0 0 0 / .55)}',
   '@media (prefers-reduced-motion:reduce){::view-transition-old(root),::view-transition-new(root),.card,body{animation:none!important;transition:none!important}}',
 ].join('');
 
@@ -93,16 +101,18 @@ const attr = esc
 
 const APP_JS = [
   'function dshEsc(v){return String(v==null?"":v).replace(/[&<>"\\\']/g,function(c){return ({"&":"&amp;","<":"&lt;",">":"&gt;","\\"":"&quot;","\\\'":"&#39;"})[c]})}',
-  'function dshToast(msg,kind){var box=document.getElementById("toasts");if(!box){box=document.createElement("div");box.id="toasts";box.className="toast";box.setAttribute("role","status");box.setAttribute("aria-live","polite");document.body.appendChild(box)}var t=document.createElement("div");t.className=kind||"ok";t.textContent=msg;box.appendChild(t);setTimeout(function(){t.remove()},5000)}',
+  'function dshHint(msg,kind){var box=document.getElementById("hint");if(!box)return;box.innerHTML="";var d=document.createElement("div");d.className="alert "+(kind||"ok");d.setAttribute("role",kind==="err"?"alert":"status");d.textContent=msg;box.appendChild(d);clearTimeout(window.__hintT);window.__hintT=setTimeout(function(){box.innerHTML=""},6000)}',
+  'function dshToast(msg,kind){dshHint(msg,kind)}',
   'function dshErr(code,status){var map={AUTH_INVALID:"邮箱或密码不正确",EMAIL_UNVERIFIED:"邮箱尚未验证",SSO_ONLY:"已启用仅 SSO，请用身份提供方登录",CODE_INVALID:"验证码不正确或已过期",EMAIL_TAKEN:"该邮箱已被使用",EMAIL_RATE_LIMITED:"发送过于频繁，请 60 秒后重试",EMAIL_QUOTA_EXCEEDED:"该邮箱今日验证码次数已用完",RATE_LIMITED:"请求过于频繁，请稍后重试",SMTP_NOT_CONFIGURED:"服务端未配置 SMTP，请联系管理员",INVALID_EMAIL:"邮箱格式不正确",SETUP_REQUIRED:"服务尚未初始化",OIDC_EXPIRED:"绑定会话已过期，请重新登录",DEVICE_KEY_REQUIRED:"需要设备密钥"};return map[code]||("操作失败（"+(code||status)+"）")}',
   'function dshApi(path,opts){return fetch(path,opts).then(function(r){return r.json().catch(function(){return {}}).then(function(b){return {ok:r.ok,status:r.status,body:b}})})}',
   'function dshPost(path,body){return dshApi(path,{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify(body||{})})}',
   'function dshPut(path,body){return dshApi(path,{method:"PUT",headers:{"content-type":"application/json"},body:JSON.stringify(body||{})})}',
   'function dshDel(path){return dshApi(path,{method:"DELETE"})}',
-  'function dshCopy(text){if(navigator.clipboard){navigator.clipboard.writeText(text).then(function(){dshToast("已复制","ok")},function(){dshToast("复制失败，请手动选择","err")})}else{dshToast("请手动选择复制","err")}}',
-  'function toggleTheme(){var d=document.documentElement;var n=d.dataset.theme==="light"?"dark":"light";d.dataset.theme=n;try{localStorage.setItem("dsh-theme",n)}catch(e){}}',
+  'function dshCopy(text){if(navigator.clipboard){navigator.clipboard.writeText(text).then(function(){dshHint("已复制","ok")},function(){dshHint("复制失败，请手动选择","err")})}else{dshHint("请手动选择复制","err")}}',
+  'function dshApplyTheme(pref){var d=document.documentElement;if(pref==="light"||pref==="dark"){d.dataset.theme=pref}else{delete d.dataset.theme}d.dataset.themePref=pref}',
+  'function toggleTheme(){var pref=document.documentElement.dataset.themePref||"auto";var next;if(pref==="auto"){next=window.matchMedia&&window.matchMedia("(prefers-color-scheme: dark)").matches?"light":"dark"}else{next=pref==="dark"?"light":"dark"}try{localStorage.setItem("theme",next)}catch(e){}dshApplyTheme(next)}',
+  '(function(){try{dshApplyTheme(localStorage.getItem("theme")||"auto")}catch(e){}})();',
   'document.addEventListener("DOMContentLoaded",function(){',
-  'try{var t=localStorage.getItem("dsh-theme");if(t)document.documentElement.dataset.theme=t}catch(e){}',
   'window.addEventListener("pageshow",function(){document.body.classList.remove("leaving")});',
   'var reduce=window.matchMedia&&window.matchMedia("(prefers-reduced-motion: reduce)").matches;',
   'if("startViewTransition" in document||reduce)return;',
@@ -116,14 +126,14 @@ const THEME = '<script>' + APP_JS + '</script>'
 const themeButton = '<button class="icon-btn" type="button" onclick="toggleTheme()" title="切换主题" aria-label="切换主题">◐</button>'
 
 const bgStyle = (url?: string): string => (url && /^https:\/\/[A-Za-z0-9._~:/?#\[\]@!$&*+,=%-]+$/i.test(url))
-  ? ' style="--bg-image:url(&quot;' + esc(url) + '&quot;)" class="has-bg"'
+  ? ' style="--app-bg-image:url(&quot;' + esc(url) + '&quot;)" class="has-bg"'
   : ''
 
-const shell = (title: string, body: string, background?: string): string =>
-  '<!doctype html><html lang="zh-CN"><head><meta charset="utf-8">' +
+const shell = (title: string, body: string, background?: string, surface: 'public' | 'console' = 'public'): string =>
+  '<!doctype html><html lang="zh-CN" data-surface="' + surface + '"><head><meta charset="utf-8">' +
   '<meta name="viewport" content="width=device-width,initial-scale=1">' +
   '<title>' + esc(title) + ' · DSH Remote</title><style>' + CSS + '</style>' + THEME +
-  '</head><body' + bgStyle(background) + '><div id="toasts" class="toast" role="status" aria-live="polite"></div>' + body + '</body></html>'
+  '</head><body' + bgStyle(background) + '><div id="hint" class="hintbar" role="status" aria-live="polite"></div>' + body + '</body></html>'
 
 const topbar = (user: string, active: string): string =>
   '<a class="skip" href="#main">跳到主内容</a><header class="topbar"><div class="brand"><span class="dot"></span>DSH Remote</div>' +
@@ -257,7 +267,7 @@ export function homePage(username: string, role: string): string {
       (role === 'admin' ? '<a class="btn ghost block" href="/admin">用户与设备管理</a>' : '') +
       '</div>') + '</aside></div></main>' +
     '<script>fetch("/api/v1/account/devices").then(function(r){return r.json()}).then(function(d){document.getElementById("deviceCount").textContent=(d.items||[]).length}).catch(function(){});' +
-    'fetch("/ready").then(function(r){document.getElementById("health").textContent=r.ok?"在线":"异常"}).catch(function(){document.getElementById("health").textContent="异常"});</script>')
+    'fetch("/ready").then(function(r){document.getElementById("health").textContent=r.ok?"在线":"异常"}).catch(function(){document.getElementById("health").textContent="异常"});</script>', undefined, 'console')
 }
 
 export function accountPage(username: string, email: string, oidcBound: boolean, onlySso: boolean, background?: string): string {
@@ -288,7 +298,7 @@ export function accountPage(username: string, email: string, oidcBound: boolean,
     'document.getElementById("send-code").onclick=function(){dshPost("/api/v1/auth/email/change/start",{newEmail:document.getElementById("new-email").value.trim()}).then(function(r){dshToast(r.status===202?"验证码已发送":dshErr(r.body.error&&r.body.error.code,r.status),r.status===202?"ok":"err")})};' +
     'document.getElementById("change-email").onclick=function(){dshPost("/api/v1/auth/email/change/complete",{newEmail:document.getElementById("new-email").value.trim(),newCode:document.getElementById("new-code").value.trim(),oldCode:document.getElementById("old-code").value.trim()}).then(function(r){if(r.ok){dshToast("邮箱已换绑","ok");setTimeout(function(){location.reload()},800)}else dshToast(dshErr(r.body.error&&r.body.error.code,r.status),"err")})};' +
     'var ub=document.getElementById("unbind");if(ub)ub.onclick=function(){if(!confirm("解绑后将无法用该 SSO 身份登录，确定吗？"))return;dshPost("/api/v1/auth/oidc/unbind").then(function(r){dshToast(r.ok?"已解绑":dshErr(r.body.error&&r.body.error.code,r.status),r.ok?"ok":"err")})};' +
-    '</script>', background)
+    '</script>', background, 'console')
 }
 
 export function adminPage(username: string, background?: string): string {
@@ -379,5 +389,5 @@ export function adminPage(username: string, background?: string): string {
     '$("test-smtp").onclick=function(){dshPost("/api/v1/admin/smtp/test",{to:$("smtp-test-to").value.trim()}).then(function(r){dshToast(r.ok?"测试邮件已发送":dshErr(r.body.error&&r.body.error.code,r.status),r.ok?"ok":"err")})};' +
     '$("save-limits").onclick=function(){dshPut("/api/v1/admin/settings",{limits:{sessionTtlMs:+$("session-ttl").value,userConnectionLimit:+$("conn-limit").value,userRatePerMinute:+$("user-rate").value,anonRatePerMinute:+$("anon-rate").value},ice:{stunUrls:$("stun").value,turnUrls:$("turn").value,turnUsername:$("turn-user").value,turnPassword:$("turn-pass").value}}).then(function(r){if(r.ok){$("turn-pass").value="";dshToast("已保存","ok")}else dshToast(dshErr(r.body.error&&r.body.error.code,r.status),"err")})};' +
     'loadUsers();loadKeys();loadDevices();loadAudit();loadSettings();' +
-    '</script>', background)
+    '</script>', background, 'console')
 }
