@@ -702,6 +702,10 @@ export class Store {
   }
 
 
+  async setUsername(userId: string, username: string): Promise<void> {
+    await this.pool.query('UPDATE users SET username = $2 WHERE id = $1', [userId, username.trim().toLowerCase()])
+  }
+
   async setEmail(userId: string, email: string, verified: boolean): Promise<void> {
     await this.pool.query('UPDATE users SET email = $2, email_verified = $3 WHERE id = $1',
       [userId, email.trim().toLowerCase(), verified])

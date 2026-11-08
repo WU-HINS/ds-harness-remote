@@ -27,7 +27,7 @@ const cookieOf = (r) => (r.headers.get('set-cookie') || '').split(';')[0]
 
 check('healthz', (await req('/healthz')).status === 200)
 check('ready', (await req('/ready')).status === 200)
-check('setup without key rejected', (await req('/api/v1/setup', { method: 'POST', ...json({ username: 'admin', password: 'admin-password-123' }) })).status === 403)
+check('setup without key rejected', (await req('/api/v1/setup', { method: 'POST', ...json({ username: 'admin@example.com', password: 'admin-password-123' }) })).status === 403)
 // client address: private peers may supply X-Real-IP, public peers may not
 const fakeReq = (peer, headers) => ({ socket: { remoteAddress: peer }, rawHeaders: Object.entries(headers).flat() })
 check('loopback is private', isPrivateAddress('127.0.0.1') === true)
@@ -38,20 +38,20 @@ check('public peer ignores x-real-ip', clientAddress(fakeReq('8.8.8.8', { 'x-rea
 check('explicit trusted proxy honoured', clientAddress(fakeReq('8.8.8.8', { 'x-real-ip': '203.0.113.9' }), new Set(['8.8.8.8'])) === '203.0.113.9')
 check('comma list rejected', clientAddress(fakeReq('127.0.0.1', { 'x-real-ip': '1.1.1.1, 2.2.2.2' }), new Set()) === '127.0.0.1')
 
-const setup = await req('/api/v1/setup', { method: 'POST', ...json({ key: setupKey, username: 'admin', password: 'admin-password-123' }) })
+const setup = await req('/api/v1/setup', { method: 'POST', ...json({ key: setupKey, username: 'admin@example.com', password: 'admin-password-123' }) })
 check('setup with key creates admin', setup.status === 201 && typeof setup.body.deviceKey === 'string')
 check('setup closes afterwards', (await req('/setup')).status === 302)
 check('replaying the setup key is refused', (await req('/api/v1/setup', { method: 'POST', ...json({ key: setupKey, username: 'mallory', password: 'mallory-password-1' }) })).status === 409)
 
-const csrfOrigin = await req('/api/v1/auth/login', { method: 'POST', headers: { 'content-type': 'application/json', origin: 'https://evil.example' }, body: JSON.stringify({ email: 'admin', password: 'x' }) })
+const csrfOrigin = await req('/api/v1/auth/login', { method: 'POST', headers: { 'content-type': 'application/json', origin: 'https://evil.example' }, body: JSON.stringify({ email: 'admin@example.com', password: 'x' }) })
 check('cross-origin POST rejected', csrfOrigin.status === 403, String(csrfOrigin.status))
-const csrfFetch = await req('/api/v1/auth/login', { method: 'POST', headers: { 'content-type': 'application/json', 'sec-fetch-site': 'cross-site' }, body: JSON.stringify({ email: 'admin', password: 'x' }) })
+const csrfFetch = await req('/api/v1/auth/login', { method: 'POST', headers: { 'content-type': 'application/json', 'sec-fetch-site': 'cross-site' }, body: JSON.stringify({ email: 'admin@example.com', password: 'x' }) })
 check('cross-site fetch metadata rejected', csrfFetch.status === 403, String(csrfFetch.status))
 
-const badLogin = await req('/api/v1/auth/login', { method: 'POST', ...json({ email: 'admin', password: 'wrong-password' }) })
+const badLogin = await req('/api/v1/auth/login', { method: 'POST', ...json({ email: 'admin@example.com', password: 'wrong-password' }) })
 check('bad login 401 with envelope', badLogin.status === 401 && badLogin.body.error?.code === 'AUTH_INVALID')
-const adminLogin = await req('/api/v1/auth/login', { method: 'POST', ...json({ email: 'admin', password: 'admin-password-123' }) })
-check('admin login returns client shape', adminLogin.status === 200 && adminLogin.body.account === 'admin' && adminLogin.body.isAdmin === true)
+const adminLogin = await req('/api/v1/auth/login', { method: 'POST', ...json({ email: 'admin@example.com', password: 'admin-password-123' }) })
+check('admin login returns client shape', adminLogin.status === 200 && adminLogin.body.account === 'admin@example.com' && adminLogin.body.isAdmin === true)
 const adminCookie = cookieOf(adminLogin)
 
 const created = await req('/api/v1/admin/users', { method: 'POST', headers: { 'content-type': 'application/json', cookie: adminCookie }, body: JSON.stringify({ username: 'alice', password: 'alice-password-123', role: 'user' }) })
@@ -98,7 +98,7 @@ check('logout succeeds and expires cookie', logout.status === 200 && /Max-Age=0/
 check('old session is dead after logout', (await req('/api/v1/auth/me', { headers: { cookie: adminCookie } })).status === 401)
 check('GET logout is rejected', (await req('/api/v1/auth/logout')).status === 405)
 
-const disable = await req('/api/v1/admin/users/' + created.body.user.id, { method: 'PATCH', headers: { 'content-type': 'application/json', cookie: cookieOf(await req('/api/v1/auth/login', { method: 'POST', ...json({ email: 'admin', password: 'admin-password-123' }) })) }, body: JSON.stringify({ toggle: true }) })
+const disable = await req('/api/v1/admin/users/' + created.body.user.id, { method: 'PATCH', headers: { 'content-type': 'application/json', cookie: cookieOf(await req('/api/v1/auth/login', { method: 'POST', ...json({ email: 'admin@example.com', password: 'admin-password-123' }) })) }, body: JSON.stringify({ toggle: true }) })
 check('admin can disable a user', disable.status === 200, String(disable.status))
 check('disabled user device token is dead', (await req('/api/v1/me', { headers: aliceAuth })).status === 401)
 
@@ -117,13 +117,13 @@ for (let i = 0; i < 80; i++) {
 check('anonymous rate limit engages', limited)
 
 // runtime public origin
-const adminRelogin = await req('/api/v1/auth/login', { method: 'POST', headers: { 'content-type': 'application/json', 'x-real-ip': '198.51.100.7' }, body: JSON.stringify({ email: 'admin', password: 'admin-password-123' }) })
+const adminRelogin = await req('/api/v1/auth/login', { method: 'POST', headers: { 'content-type': 'application/json', 'x-real-ip': '198.51.100.7' }, body: JSON.stringify({ email: 'admin@example.com', password: 'admin-password-123' }) })
 const adminFresh = cookieOf(adminRelogin)
 const badOrigin = await req('/api/v1/admin/settings', { method: 'PUT', headers: { 'content-type': 'application/json', cookie: adminFresh }, body: JSON.stringify({ server: { publicUrl: 'http://remote.example' } }) })
 check('non-https public url rejected', badOrigin.status === 400, String(badOrigin.status))
 const goodOrigin = await req('/api/v1/admin/settings', { method: 'PUT', headers: { 'content-type': 'application/json', cookie: adminFresh }, body: JSON.stringify({ server: { publicUrl: 'https://remote.example' } }) })
 check('public url saved at runtime', goodOrigin.status === 200 && goodOrigin.body.server.publicUrl === 'https://remote.example')
-const originLogin = await req('/api/v1/auth/login', { method: 'POST', ...json({ email: 'admin', password: 'admin-password-123' }), headers: { 'content-type': 'application/json', 'x-real-ip': '198.51.100.7' } })
+const originLogin = await req('/api/v1/auth/login', { method: 'POST', ...json({ email: 'admin@example.com', password: 'admin-password-123' }), headers: { 'content-type': 'application/json', 'x-real-ip': '198.51.100.7' } })
 check('cookie follows the configured https origin', /; Secure/.test(originLogin.headers.get('set-cookie') || ''))
 
 await app.close()

@@ -24,7 +24,7 @@ const json = (v) => ({ headers: { 'content-type': 'application/json' }, body: JS
 const cookieOf = (r) => (r.headers.get('set-cookie') || '').split(';')[0]
 const codeTo = (to) => { const m = [...sent].reverse().find(x => x.to === to); return m ? (m.text.match(/\d{6}/) || [])[0] : undefined }
 
-const setup = await req('/api/v1/setup', { method: 'POST', ...json({ key: setupKey, username: 'admin', password: 'admin-password-123' }) })
+const setup = await req('/api/v1/setup', { method: 'POST', ...json({ key: setupKey, username: 'admin@example.com', password: 'admin-password-123' }) })
 const admin = cookieOf(setup)
 await req('/api/v1/admin/users', { method: 'POST', headers: { 'content-type': 'application/json', cookie: admin },
   body: JSON.stringify({ username: 'erin', password: 'erin-password-123', email: 'erin@example.com', role: 'user' }) })

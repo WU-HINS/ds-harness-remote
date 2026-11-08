@@ -54,7 +54,7 @@ const cookieOf = (r) => (r.headers.get('set-cookie') || '').split(';')[0]
 const codeTo = (to) => { const m = [...sent].reverse().find(x => x.to === to); return m ? (m.text.match(/\d{6}/) || [])[0] : undefined }
 
 // 1. 初始化
-const setup = await req('/api/v1/setup', { method: 'POST', ...json({ key: setupKey, username: 'admin', password: 'admin-password-123' }) })
+const setup = await req('/api/v1/setup', { method: 'POST', ...json({ key: setupKey, username: 'admin@example.com', password: 'admin-password-123' }) })
 check('1 setup', setup.status === 201)
 const admin = cookieOf(setup)
 

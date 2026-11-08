@@ -37,7 +37,8 @@ docker compose up -d --build
 docker compose logs server | grep -A4 "初始化密钥"
 ```
 
-Open `https://your.host/setup?key=<key>` and create the first administrator. The setup key is
+Any visit before setup redirects to `/setup`. Open `https://your.host/setup?key=<key>`, enter the public
+origin and create the first administrator **with an email address** (it becomes the login name). The setup key is
 one-time: it is deleted as soon as the admin exists. Set `DSH_SETUP_KEY` to pin it yourself.
 
 Without Docker:

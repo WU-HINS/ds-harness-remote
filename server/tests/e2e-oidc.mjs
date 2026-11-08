@@ -63,7 +63,7 @@ const req = async (path, init = {}) => {
 const json = (v) => ({ headers: { 'content-type': 'application/json' }, body: JSON.stringify(v) })
 const cookieOf = (r) => (r.headers.get('set-cookie') || '').split(';')[0]
 
-const setup = await req('/api/v1/setup', { method: 'POST', ...json({ key: setupKey, username: 'admin', password: 'admin-password-123' }) })
+const setup = await req('/api/v1/setup', { method: 'POST', ...json({ key: setupKey, username: 'admin@example.com', password: 'admin-password-123' }) })
 const admin = cookieOf(setup)
 await req('/api/v1/admin/settings', { method: 'PUT', headers: { 'content-type': 'application/json', cookie: admin },
   body: JSON.stringify({ oidc: { enabled: true, issuer, clientId: 'cid', clientSecret: 'sekret' } }) })

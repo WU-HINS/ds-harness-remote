@@ -173,6 +173,11 @@ export function createApp(settings: Settings, deps: { pool?: Pool; mailer?: Mail
       return redirect(res, '/', { 'set-cookie': cookie('dsh_session', session.token, ttl, origin.startsWith('https:')) })
     })()
   }
+  let setupNeeded: boolean | undefined
+  const needsSetup = async (): Promise<boolean> => {
+    if (setupNeeded === undefined) setupNeeded = (await store.countUsers()) === 0
+    return setupNeeded
+  }
   const trustedProxies = new Set(settings.trustedProxyIps)
   const syncTrustedProxies = (): void => {
     trustedProxies.clear()
@@ -222,10 +227,22 @@ export function createApp(settings: Settings, deps: { pool?: Pool; mailer?: Mail
     res.setHeader('Cache-Control', 'no-store')
 
     const isCallback = method === 'GET' && path === '/api/v1/auth/oidc/callback'
-    if (req.headers.origin && req.headers.origin !== origin) throw new ApiError('AUTH_INVALID', 403)
+    if (req.headers.origin && req.headers.origin !== origin) {
+      // Until an operator pins the public origin, accept an Origin whose host matches
+      // the request host (scheme differs behind a TLS-terminating proxy).
+      const derived = runtime.current.server.publicUrl === '' && !settings.publicUrlExplicit
+      let sameHost = false
+      try { sameHost = new URL(req.headers.origin).host === new URL(origin).host } catch { sameHost = false }
+      if (!(derived && sameHost)) throw new ApiError('AUTH_INVALID', 403)
+    }
     if (!isCallback && req.headers['sec-fetch-site'] === 'cross-site') throw new ApiError('AUTH_INVALID', 403)
 
     if (method === 'GET' && (path === '/healthz' || path === '/health')) return json(res, 200, { status: 'ok' })
+    const setupExempt = path === '/setup' || path === '/api/v1/setup' || path === '/ready'
+    if (!setupExempt && (await needsSetup())) {
+      if (path.startsWith('/api/')) throw new ApiError('SETUP_REQUIRED', 409)
+      return redirect(res, '/setup')
+    }
     if (method === 'GET' && path === '/ready') {
       try { await pool.query('SELECT 1') } catch { throw new ApiError('NOT_READY', 503) }
       return json(res, 200, { status: 'ready' })
@@ -241,7 +258,8 @@ export function createApp(settings: Settings, deps: { pool?: Pool; mailer?: Mail
       const input = await body(req)
       const username = String(input.username ?? '').trim()
       const password = String(input.password ?? '')
-      if (username.length < 3 || password.length < 12) throw new ApiError('INVALID_MESSAGE', 400)
+      const EMAIL_ONLY = /^[^@\s]+@[^@\s]+\.[^@\s]+$/
+      if (!EMAIL_ONLY.test(username) || password.length < 12) throw new ApiError('INVALID_EMAIL', 400)
       const provided = String(input.key ?? url.searchParams.get('key') ?? '')
       if (!(await store.peekSetupKey(provided))) throw new ApiError('SETUP_KEY_INVALID', 403)
       const requestedOrigin = String(input.publicUrl ?? '').trim()
@@ -250,6 +268,8 @@ export function createApp(settings: Settings, deps: { pool?: Pool; mailer?: Mail
         catch (error) { throw new ApiError('INVALID_PUBLIC_URL', 400) }
       }
       const { user, deviceKey } = await store.createFirstAdmin(username, password)
+      await store.setEmail(user.id, username, true).catch(() => undefined)
+      setupNeeded = false
       await store.consumeSetupKey(provided)
       await store.audit('setup.admin_created', username, user.id)
       const session = await store.createSession(user.id, runtime.limits.sessionTtlMs)
@@ -259,7 +279,10 @@ export function createApp(settings: Settings, deps: { pool?: Pool; mailer?: Mail
     }
 
     // ── login ───────────────────────────────────────────────────────────────
-    if (method === 'GET' && path === '/login') return html(res, 200, loginPage(Boolean(runtime.oidcClient(origin)), undefined, runtime.current.ui.backgroundUrl))
+    if (method === 'GET' && path === '/login') {
+      if (await sessionUser(req)) return redirect(res, '/')
+      return html(res, 200, loginPage(Boolean(runtime.oidcClient(origin)), undefined, runtime.current.ui.backgroundUrl))
+    }
     if (method === 'GET' && path === '/register') return html(res, 200, registerPage(runtime.current.oidc.onlySso, runtime.current.ui.backgroundUrl))
     if (method === 'GET' && path === '/forgot') return html(res, 200, forgotPage(runtime.current.oidc.onlySso, runtime.current.ui.backgroundUrl))
     if (method === 'POST' && path === '/api/v1/auth/login') {
@@ -455,7 +478,10 @@ export function createApp(settings: Settings, deps: { pool?: Pool; mailer?: Mail
       if (user.email) await store.markEmailCodeConsumed(user.email, 'email-change-old')
       await store.markEmailCodeConsumed(nextEmail, 'email-change-new')
       const previousEmail = user.email ?? ''
-      await store.setEmail(user.id, nextEmail, true).catch(() => { throw new ApiError('EMAIL_TAKEN', 409) })
+      await store.setEmail(user.id, nextEmail, true)
+      // Accounts whose login name *is* their email (e.g. the bootstrap admin)
+      // must follow the change, otherwise the old address keeps working.
+      if (previousEmail && user.username === previousEmail) await store.setUsername(user.id, nextEmail).catch(() => { throw new ApiError('EMAIL_TAKEN', 409) })
       await store.audit('email.changed', user.username, user.id, { from: previousEmail, to: nextEmail })
       const session = await store.createSession(user.id, runtime.limits.sessionTtlMs)
       res.setHeader('Set-Cookie', cookie('dsh_session', session.token, runtime.limits.sessionTtlMs, secure))

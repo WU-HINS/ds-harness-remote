@@ -21,7 +21,7 @@ const req = async (path, init = {}) => {
 const json = (v) => ({ headers: { 'content-type': 'application/json' }, body: JSON.stringify(v) })
 const cookieOf = (r) => (r.headers.get('set-cookie') || '').split(';')[0]
 
-const setup = await req('/api/v1/setup', { method: 'POST', ...json({ key: setupKey, username: 'admin', password: 'admin-password-123' }) })
+const setup = await req('/api/v1/setup', { method: 'POST', ...json({ key: setupKey, username: 'admin@example.com', password: 'admin-password-123' }) })
 check('1 setup', setup.status === 201)
 const admin = cookieOf(setup)
 const adminToken = setup.body.token

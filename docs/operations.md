@@ -26,7 +26,8 @@ On first boot the server generates a setup key and prints it:
 ============================================================
 ```
 
-The key is single-use and deleted once the administrator exists. The setup form also asks for the
+The key is single-use and deleted once the administrator exists. Until then every page redirects to
+`/setup`. The administrator account must use an email address — it is the login name. The setup form also asks for the
 public origin; it can be changed later under **服务地址** in the admin console.
 
 ## Single instance

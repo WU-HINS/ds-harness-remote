@@ -24,7 +24,7 @@ const json = (v) => ({ headers: { 'content-type': 'application/json' }, body: JS
 const cookieOf = (r) => (r.headers.get('set-cookie') || '').split(';')[0]
 const codeFor = (to) => { const m = [...sent].reverse().find(x => x.to === to); return m ? (m.text.match(/\d{6}/) || [])[0] : undefined }
 
-const setup = await req('/api/v1/setup', { method: 'POST', ...json({ key: setupKey, username: 'admin', password: 'admin-password-123' }) })
+const setup = await req('/api/v1/setup', { method: 'POST', ...json({ key: setupKey, username: 'admin@example.com', password: 'admin-password-123' }) })
 check('1 setup', setup.status === 201)
 const admin = cookieOf(setup)
 
@@ -78,6 +78,7 @@ const db2 = newDb({ autoCreateForeignKeyIndices: true })
 const pool2 = db2.adapters.createPg().Pool
 const app2 = createApp(loadSettings({ DSH_SERVER_PUBLIC_URL: 'http://127.0.0.1:1', DSH_SERVER_PORT: '0', DSH_SERVER_HOST: '127.0.0.1', DSH_ANON_RATE_PER_MINUTE: '500' }), { pool: new pool2() })
 const started2 = await app2.start()
+await fetch('http://127.0.0.1:' + started2.port + '/api/v1/setup', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ key: started2.setupKey, username: 'admin2@example.com', password: 'admin2-password-123' }) })
 const res2 = await fetch('http://127.0.0.1:' + started2.port + '/api/v1/auth/register/start', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ email: 'z@example.com' }) })
 check('21 registration disabled without SMTP', res2.status === 503, String(res2.status))
 await app2.close()
