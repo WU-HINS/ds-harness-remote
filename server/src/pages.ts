@@ -45,7 +45,7 @@ const CSS = [
   '.topbar .spacer{flex:1}',
   '@media (max-width:820px){.who .acct{display:none}}',
   '@media (max-width:640px){.brand .wordmark{display:none}.nav{margin-left:0}}',
-  '@media (max-width:520px){.navlink{padding:6px 10px;font-size:13px}.topbar{gap:var(--u-3)}.avatar{display:none}.topbar .spacer{min-width:var(--u-2)}}',
+  '@media (max-width:520px){.navlink{padding:6px 10px;font-size:13px}.topbar{gap:var(--u-3)}.avatar{display:none}.icon-btn{display:none}.topbar .spacer{min-width:var(--u-2)}}',
   '.wrap{max-width:1252px;margin:0 auto;padding:var(--u-8) clamp(var(--u-6),3vw,var(--u-9))}',
   '.grid-phi{display:grid;grid-template-columns:var(--phi-cols);gap:var(--gap-section);align-items:start}',
   '.grid-phi>*{min-width:0}',
@@ -69,21 +69,22 @@ const CSS = [
   '.table-wrap{overflow-x:auto;margin:0 -2px}',
   '.table-scroll{max-height:min(58vh,460px);overflow:auto;border:1px solid hsl(var(--line));border-radius:var(--r-sm)}',
   '.table-scroll .table{min-width:720px}',
-  '.table-scroll td:last-child,.table-scroll th:last-child{position:sticky;right:0;background:hsl(var(--surface))}',
+  '.table-scroll.sticky-actions td:last-child,.table-scroll.sticky-actions th:last-child{position:sticky;right:0;background:hsl(var(--surface))}',
   '.table-scroll thead th{position:sticky;top:0;z-index:1;background:hsl(var(--surface));box-shadow:0 1px 0 hsl(var(--line))}',
   '.toolbar{display:flex;gap:var(--s2);align-items:center;flex-wrap:wrap;margin-bottom:var(--s3)}',
   '.toolbar .input{max-width:260px}',
   '.chips{display:flex;gap:6px;flex-wrap:wrap}',
   '.chip{padding:5px 11px;border-radius:999px;border:1px solid hsl(var(--line));background:transparent;color:hsl(var(--muted));font:inherit;font-size:12.5px;cursor:pointer}',
-  '.chip[aria-pressed=true]{background:hsl(var(--surface-2));color:hsl(var(--text));border-color:hsl(var(--accent))}',
+  '.chip[aria-pressed=true]{background:hsl(var(--surface-2));color:hsl(var(--text));border-color:hsl(var(--ring))}',
   '.dev-name{color:hsl(var(--muted));font-size:11.5px}',
   '.empty-note{padding:var(--u-7);text-align:center;color:hsl(var(--muted))}',
+  '.sr-only{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap;border:0}',
   '.table{width:100%;border-collapse:collapse;min-width:480px}',
   '.table th{font-size:11.5px;text-transform:uppercase;letter-spacing:.06em;color:hsl(var(--muted));text-align:left;padding:var(--u-3);border-bottom:1px solid hsl(var(--line))}',
   '.table td{padding:var(--u-4) var(--u-3);border-bottom:1px solid hsl(var(--line)/.6);font-size:13.5px;vertical-align:middle}',
   '.table tr:last-child td{border-bottom:0}',
   '.table .actions{display:flex;gap:var(--u-2);flex-wrap:wrap}',
-  '.badge{display:inline-flex;align-items:center;gap:6px;padding:3px 9px;border-radius:999px;font-size:11.5px;background:hsl(var(--surface-2));border:1px solid hsl(var(--line));color:hsl(var(--muted))}',
+  '.badge{display:inline-flex;align-items:center;gap:6px;padding:3px 9px;border-radius:999px;font-size:11.5px;white-space:nowrap;background:hsl(var(--surface-2));border:1px solid hsl(var(--line));color:hsl(var(--muted))}',
   '.badge.ok{color:hsl(var(--ok));border-color:hsl(var(--ok)/.4)}',
   '.badge.off{color:hsl(var(--danger));border-color:hsl(var(--danger)/.4)}',
   '.alert{padding:var(--u-4) var(--u-5);border-radius:var(--r-sm);border:1px solid hsl(var(--line));background:hsl(var(--surface-2));font-size:13.5px}',
@@ -374,7 +375,7 @@ export function accountPage(username: string, email: string, oidcBound: boolean,
         '<div><label class="label" for="cur-pass">当前密码</label><input class="input" id="cur-pass" type="password" autocomplete="current-password"></div>' +
         '<div><label class="label" for="new-pass">新密码</label><input class="input" id="new-pass" type="password" placeholder="至少 12 位" autocomplete="new-password"></div>' +
         '<button class="btn" type="button" id="change-pw">保存</button></div>')
-  return shell('我的账户', topbar(username, 'account', deviceUsername, isAdmin) + accountTabs('profile') + '<main class="wrap" id="main"><div class="grid-phi"><div>' +
+  return shell('我的账户', topbar(username, 'account', deviceUsername, isAdmin) + accountTabs('profile') + '<main class="wrap" id="main"><h1 class="sr-only">我的账户</h1><div class="grid-phi"><div>' +
     card('账户', '<div class="grid-2">' +
       '<div><div class="label">登录邮箱</div><div class="mono">' + esc(email || '未设置') + '</div></div>' +
       '<div><div class="label">邮箱状态</div><div><span class="badge">' + (email ? '已验证' : '未设置') + '</span></div></div>' +
@@ -387,30 +388,27 @@ export function accountPage(username: string, email: string, oidcBound: boolean,
       '<div><label class="label" for="old-code">原邮箱验证码</label><input class="input" id="old-code" maxlength="6" inputmode="numeric"></div></div>' +
       '<button class="btn" type="button" id="change-email">确认换绑</button></div>') +
     passwordCard + '</div><aside>' +
-    card('设备与密钥', '<div class="stack">' +
-      '<a class="btn ghost block" href="/account/devices">我的设备</a>' +
-      '<a class="btn ghost block" href="/account/keys">设备密钥</a></div>' +
-      '<p class="small muted" style="margin:10px 0 0">设备用「设备用户名 + 设备密钥」登录，与网页密码相互独立。</p>') +
+    card('安全提示', '<p class="muted small" style="margin:0">设备用「设备用户名 + 设备密钥」登录，与网页密码相互独立。吊销密钥会让对应设备立即下线。</p>') +
     card('单点登录', '<p class="muted small" style="margin:0 0 12px">' + (oidcBound ? '已绑定 OIDC 身份。' : '尚未绑定 OIDC 身份。') + '</p>' +
       '<div class="stack"><a class="btn ghost block" href="/api/v1/auth/oidc/start">绑定 / 重新绑定</a>' +
       (onlySso || !oidcBound ? '' : '<button class="btn danger block" type="button" id="unbind">解绑</button>') + '</div>') +
     '</aside></div></main>' +
     '<script>' +
     'function $(id){return document.getElementById(id)}' +
-    'document.getElementById("change-pw").onclick=function(){dshPost("/api/v1/auth/password/change",{currentPassword:$("cur-pass").value,newPassword:$("new-pass").value}).then(function(r){dshToast(r.ok?"密码已修改":dshErr(r.body.error&&r.body.error.code,r.status),r.ok?"ok":"err")})};' +
-    'document.getElementById("send-code").onclick=function(){dshPost("/api/v1/auth/email/change/start",{newEmail:$("new-email").value.trim()}).then(function(r){dshToast(r.status===202?"验证码已发送":dshErr(r.body.error&&r.body.error.code,r.status),r.status===202?"ok":"err")})};' +
-    'document.getElementById("change-email").onclick=function(){dshPost("/api/v1/auth/email/change/complete",{newEmail:$("new-email").value.trim(),newCode:$("new-code").value.trim(),oldCode:$("old-code").value.trim()}).then(function(r){if(r.ok){dshToast("邮箱已换绑","ok");setTimeout(function(){location.reload()},800)}else dshToast(dshErr(r.body.error&&r.body.error.code,r.status),"err")})};' +
+    'var pwBtn=document.getElementById("change-pw");if(pwBtn)pwBtn.onclick=function(){dshPost("/api/v1/auth/password/change",{currentPassword:$("cur-pass").value,newPassword:$("new-pass").value}).then(function(r){dshToast(r.ok?"密码已修改":dshErr(r.body.error&&r.body.error.code,r.status),r.ok?"ok":"err")})};' +
+    'var sendBtn=document.getElementById("send-code");if(sendBtn)sendBtn.onclick=function(){dshPost("/api/v1/auth/email/change/start",{newEmail:$("new-email").value.trim()}).then(function(r){dshToast(r.status===202?"验证码已发送":dshErr(r.body.error&&r.body.error.code,r.status),r.status===202?"ok":"err")})};' +
+    'var emailBtn=document.getElementById("change-email");if(emailBtn)emailBtn.onclick=function(){dshPost("/api/v1/auth/email/change/complete",{newEmail:$("new-email").value.trim(),newCode:$("new-code").value.trim(),oldCode:$("old-code").value.trim()}).then(function(r){if(r.ok){dshToast("邮箱已换绑","ok");setTimeout(function(){location.reload()},800)}else dshToast(dshErr(r.body.error&&r.body.error.code,r.status),"err")})};' +
     'var ub=document.getElementById("unbind");if(ub)ub.onclick=function(){if(!confirm("解绑后将无法用该 SSO 身份登录，确定吗？"))return;dshPost("/api/v1/auth/oidc/unbind").then(function(r){dshToast(r.ok?"已解绑":dshErr(r.body.error&&r.body.error.code,r.status),r.ok?"ok":"err")})};' +
     '</script>', background, 'console')
 }
 
 export function accountDevicesPage(username: string, background?: string, deviceUsername = '', isAdmin = false): string {
-  return shell('我的设备', topbar(username, 'account', deviceUsername, isAdmin) + accountTabs('devices') + '<main class="wrap" id="main">' +
+  return shell('我的设备', topbar(username, 'account', deviceUsername, isAdmin) + accountTabs('devices') + '<main class="wrap" id="main"><h1 class="sr-only">我的设备</h1>' +
     card('我的设备', '<div class="toolbar">' +
       '<input class="input" id="q" type="search" placeholder="搜索设备名或系统" aria-label="搜索设备">' +
-      '<div class="chips" role="group" aria-label="按角色筛选"><button class="chip" data-role="all" aria-pressed="true">全部</button><button class="chip" data-role="host" aria-pressed="false">Host</button><button class="chip" data-role="client" aria-pressed="false">Client</button></div>' +
+      '<div class="chips" role="group" aria-label="按角色筛选"><button class="chip" data-role="all" aria-pressed="true">全部</button><button class="chip" data-role="host" aria-pressed="false">主机</button><button class="chip" data-role="client" aria-pressed="false">客户端</button></div>' +
       '<div class="chips" role="group" aria-label="按状态筛选"><button class="chip" data-online="all" aria-pressed="true">全部状态</button><button class="chip" data-online="online" aria-pressed="false">在线</button><button class="chip" data-online="offline" aria-pressed="false">离线</button></div></div>' +
-      '<div class="table-scroll"><table class="table"><thead><tr><th scope="col">设备</th><th scope="col">角色</th><th scope="col">系统</th><th scope="col">插件版本</th><th scope="col">DSH 版本</th><th scope="col">状态</th><th scope="col">最近在线</th></tr></thead><tbody id="devices"><tr><td colspan="7"><span class="sk"></span></td></tr><tr><td colspan="7"><span class="sk"></span></td></tr><tr><td colspan="7"><span class="sk"></span></td></tr></tbody></table></div>' +
+      '<div class="table-scroll" tabindex="0" role="region" aria-label="设备列表"><table class="table" aria-label="设备列表"><thead><tr><th scope="col">设备</th><th scope="col">角色</th><th scope="col">系统</th><th scope="col">插件版本</th><th scope="col">DSH 版本</th><th scope="col">状态</th><th scope="col">最近在线</th></tr></thead><tbody id="devices" aria-live="polite"><tr><td colspan="7"><span class="sk"></span></td></tr><tr><td colspan="7"><span class="sk"></span></td></tr><tr><td colspan="7"><span class="sk"></span></td></tr></tbody></table></div>' +
       '<p class="small muted" style="margin:10px 0 0">设备列表按账号隔离；在「设备密钥」页吊销密钥会让对应设备立即下线。</p>', '仅你自己可见') +
     '</main>' +
     '<script>' +
@@ -430,10 +428,10 @@ export function accountDevicesPage(username: string, background?: string, device
 }
 
 export function accountKeysPage(username: string, background?: string, deviceUsername = '', isAdmin = false): string {
-  return shell('设备密钥', topbar(username, 'account', deviceUsername, isAdmin) + accountTabs('keys') + '<main class="wrap" id="main">' +
+  return shell('设备密钥', topbar(username, 'account', deviceUsername, isAdmin) + accountTabs('keys') + '<main class="wrap" id="main"><h1 class="sr-only">设备密钥</h1>' +
     card('设备密钥', '<div class="toolbar"><input class="input" id="q" type="search" placeholder="搜索标签" aria-label="搜索密钥">' +
       '<div class="chips" role="group" aria-label="按状态筛选"><button class="chip" data-state="all" aria-pressed="true">全部</button><button class="chip" data-state="active" aria-pressed="false">正常</button><button class="chip" data-state="revoked" aria-pressed="false">已吊销</button></div></div>' +
-      '<div class="table-scroll"><table class="table"><thead><tr><th scope="col">标签</th><th scope="col">设备数</th><th scope="col">状态</th><th scope="col">密钥</th><th scope="col">创建时间</th><th scope="col">操作</th></tr></thead><tbody id="keys"><tr><td colspan="6"><span class="sk"></span></td></tr><tr><td colspan="6"><span class="sk"></span></td></tr><tr><td colspan="6"><span class="sk"></span></td></tr></tbody></table></div>' +
+      '<div class="table-scroll sticky-actions" tabindex="0" role="region" aria-label="设备密钥列表"><table class="table" aria-label="设备密钥列表"><thead><tr><th scope="col">标签</th><th scope="col">设备数</th><th scope="col">状态</th><th scope="col">密钥</th><th scope="col">创建时间</th><th scope="col">操作</th></tr></thead><tbody id="keys" aria-live="polite"><tr><td colspan="6"><span class="sk"></span></td></tr><tr><td colspan="6"><span class="sk"></span></td></tr><tr><td colspan="6"><span class="sk"></span></td></tr></tbody></table></div>' +
       '<div class="row" style="margin-top:12px"><div style="flex:1;min-width:200px"><label class="label" for="key-label">新密钥标签</label><input class="input" id="key-label" placeholder="例如 客厅 iPad" maxlength="64"></div>' +
       '<button class="btn" type="button" id="create-key">生成密钥</button></div>' +
       '<p class="small muted" style="margin:10px 0 0">密钥随时可以查看和复制；吊销后用它接入的设备会立即掉线，且同一设备无法重新接入。</p>', '仅你自己可见') +
