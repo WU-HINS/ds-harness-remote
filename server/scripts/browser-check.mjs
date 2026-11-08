@@ -72,9 +72,11 @@ const devName = await page.evaluate(() => {
   if (!el) return null
   const box = el.getBoundingClientRect()
   const who = el.closest('.who').getBoundingClientRect()
-  return { text: el.textContent.trim(), visible: box.width > 0, clipped: box.right > who.right + 1 || box.left < who.left - 1 }
+  const next = document.querySelector('.topbar .icon-btn')?.getBoundingClientRect()
+  const overlap = next ? !(box.right <= next.left || next.right <= box.left) : false
+  return { text: el.textContent.trim(), visible: box.width > 0, clipped: box.right > who.right + 1 || box.left < who.left - 1, overlapsNext: overlap }
 })
-check('device username visible beside the account name', Boolean(devName && /^dev-/.test(devName.text) && devName.visible && !devName.clipped), JSON.stringify(devName))
+check('device username visible beside the account name', Boolean(devName && /^dev-/.test(devName.text) && devName.visible && !devName.clipped && !devName.overlapsNext), JSON.stringify(devName))
 
 check('avatar shows initial', (await page.locator('.avatar').innerText()).trim().toUpperCase() === 'B')
 
@@ -139,9 +141,16 @@ check('no horizontal overflow at 360px', overflow <= 1, 'overflow=' + overflow)
 const labelsHidden = await page.locator('.navlink .lbl').first().isHidden()
 const mobileDev = await page.evaluate(() => {
   const el = document.querySelector('.who .dev-name')
-  return el ? { text: el.textContent.trim(), visible: getComputedStyle(el).display !== 'none' } : null
+  if (!el) return null
+  const box = el.getBoundingClientRect()
+  const next = document.querySelector('.topbar .icon-btn')?.getBoundingClientRect()
+  const overlap = next ? !(box.right <= next.left || next.right <= box.left) : false
+  return { text: el.textContent.trim(), visible: box.width > 0 && getComputedStyle(el).display !== 'none', overlapsNext: overlap, overflow: document.documentElement.scrollWidth - window.innerWidth }
 })
-check('device username survives mobile', Boolean(mobileDev && /^dev-/.test(mobileDev.text) && mobileDev.visible), JSON.stringify(mobileDev))
+check('device username survives mobile', Boolean(mobileDev && /^dev-/.test(mobileDev.text) && mobileDev.visible && !mobileDev.overlapsNext && mobileDev.overflow <= 1), JSON.stringify(mobileDev))
+await page.goto(BASE + '/account', { waitUntil: 'domcontentloaded' })
+const accountOverflow = await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth)
+check('account page fits at 360px', accountOverflow <= 1, 'overflow=' + accountOverflow)
 
 check('nav labels collapse under 640px', labelsHidden)
 await page.screenshot({ path: '/tmp/bv/shots/07-admin-mobile.png', fullPage: true })
