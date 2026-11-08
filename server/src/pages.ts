@@ -63,6 +63,22 @@ const CSS = [
   '.kbd{font-family:ui-monospace,monospace;font-size:12px;padding:2px 6px;border-radius:6px;background:var(--surface2);border:1px solid var(--line)}',
   '.code{font-family:ui-monospace,monospace;font-size:12.5px;word-break:break-all;background:var(--surface2);border:1px solid var(--line);border-radius:10px;padding:10px 12px}',
   '.grid-2{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:14px}',
+  '@view-transition{navigation:auto}',
+  '::view-transition-old(root){animation:vt-out .18s ease both}',
+  '::view-transition-new(root){animation:vt-in .30s cubic-bezier(.2,.7,.2,1) both}',
+  '@keyframes vt-out{to{opacity:0;transform:translateY(-6px) scale(.995)}}',
+  '@keyframes vt-in{from{opacity:0;transform:translateY(10px) scale(.995)}}',
+  '.topbar{view-transition-name:topbar}',
+  'main.hero,.wrap{view-transition-name:content}',
+  '::view-transition-old(topbar){animation:none}::view-transition-new(topbar){animation:none}',
+  'body{animation:page-in .26s ease both}',
+  '@keyframes page-in{from{opacity:0}to{opacity:1}}',
+  '@supports (view-transition-name:none){body{animation:none}}',
+  'body.leaving{opacity:0;transition:opacity .16s ease}',
+  '.card{animation:rise .34s ease both}',
+  '.card:nth-of-type(2){animation-delay:.04s}.card:nth-of-type(3){animation-delay:.08s}.card:nth-of-type(4){animation-delay:.12s}',
+  '@keyframes rise{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}',
+  '@media (prefers-reduced-motion:reduce){::view-transition-old(root),::view-transition-new(root),.card,body{animation:none!important;transition:none!important}}',
 ].join('');
 
 const esc = (value: unknown): string => String(value).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c] as string))
@@ -72,6 +88,16 @@ const THEME = [
   '<script>',
   '(function(){try{var t=localStorage.getItem("dsh-theme");if(t)document.documentElement.dataset.theme=t}catch(e){}})();',
   'function toggleTheme(){var d=document.documentElement;var n=d.dataset.theme==="light"?"dark":"light";d.dataset.theme=n;try{localStorage.setItem("dsh-theme",n)}catch(e){}}',
+  // Cross-document view transitions are native in Chromium; elsewhere fade out on navigation.
+  'document.addEventListener("DOMContentLoaded",function(){',
+  'window.addEventListener("pageshow",function(){document.body.classList.remove("leaving")});',
+  'if("startViewTransition" in document)return;',
+  'document.addEventListener("click",function(e){',
+  'var a=e.target&&e.target.closest?e.target.closest("a"):null;',
+  'if(!a||a.target||a.hasAttribute("download")||e.metaKey||e.ctrlKey||e.shiftKey||e.altKey||e.button!==0)return;',
+  'var u=new URL(a.href,location.href);if(u.origin!==location.origin)return;',
+  'e.preventDefault();document.body.classList.add("leaving");setTimeout(function(){location.href=u.href},170);',
+  '});});',
   '</script>',
 ].join('')
 
