@@ -373,7 +373,7 @@ export function createApp(settings: Settings, deps: { pool?: Pool; mailer?: Mail
     if (method === 'GET' && path === '/api/v1/auth/me') {
       const user = await requireUser(req)
       // `account`/`isAdmin` keep the shape the original clients parse.
-      return json(res, 200, { account: user.username, isAdmin: user.role === 'admin', user: { id: user.id, username: user.username, role: user.role }, oidc: Boolean(user.oidc_subject) })
+      return json(res, 200, { account: user.username, isAdmin: user.role === 'admin', deviceUsername: user.device_username, user: { id: user.id, username: user.username, role: user.role }, oidc: Boolean(user.oidc_subject) })
     }
 
     // ── 自助注册 / 找回密码（P1）────────────────────────────────────────────

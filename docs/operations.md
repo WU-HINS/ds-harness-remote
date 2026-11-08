@@ -94,3 +94,17 @@ npm i --no-save oidc-provider smtp-server playwright-core jose
 pnpm build
 DATABASE_URL=postgres://dsh:dsh@127.0.0.1:5432/dshidp node server/scripts/idp-smtp-walkthrough.mjs
 ```
+
+## Full user journey
+
+`server/scripts/user-journey-walkthrough.mjs` plays a normal user from zero: bootstrap,
+self-registration with a real SMTP code, password and mailbox changes, device keys
+(create / reveal / revoke), two enrolled devices, a real control-plane session with a
+Noise handshake and relay, OIDC binding and login, admin disable/enable, SSO-only mode and
+finally account deletion — 40 checks against a real OIDC provider, SMTP sink and Chromium.
+
+```bash
+npm i --no-save oidc-provider smtp-server playwright-core jose
+pnpm build
+DATABASE_URL=postgres://dsh:dsh@127.0.0.1:5432/dshjourney node server/scripts/user-journey-walkthrough.mjs
+```
