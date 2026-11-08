@@ -110,6 +110,13 @@ await page.waitForFunction(() => document.getElementById('rows').innerText.inclu
 check('create user from UI', true)
 
 // The admin console must not expose key management at all.
+check('admin tables are keyboard regions', await page.evaluate(() => {
+  const wrap = document.querySelector('.table-wrap')
+  return Boolean(wrap && wrap.getAttribute('tabindex') === '0' && wrap.getAttribute('role') === 'region' && wrap.getAttribute('aria-label'))
+}))
+check('admin page has a heading', await page.evaluate(() => Boolean(document.querySelector('h1'))))
+check('busy state clears after load', await page.evaluate(() => document.getElementById('rows')?.getAttribute('aria-busy') === 'false'))
+
 check('admin console has no key card', (await page.locator('#key-label').count()) === 0)
 
 // 8. the owner manages keys on their own account page
