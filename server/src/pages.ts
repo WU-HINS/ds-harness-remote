@@ -37,13 +37,15 @@ const CSS = [
   '.navlink.active{color:hsl(var(--text));background:hsl(var(--surface));font-weight:600;box-shadow:0 1px 2px rgb(0 0 0 / .18)}',
   '.user{display:flex;align-items:center;gap:var(--u-3)}',
   '.avatar{width:28px;height:28px;border-radius:50%;display:grid;place-items:center;background:linear-gradient(135deg,hsl(var(--primary)),hsl(var(--primary)/.6));color:#fff;font-size:12px;font-weight:700;text-transform:uppercase}',
-  '.who{font-size:12.5px;color:hsl(var(--muted));max-width:190px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}',
+  '.who{display:flex;align-items:center;gap:6px;min-width:0;font-size:12.5px;color:hsl(var(--muted))}',
+  '.who .acct{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0;max-width:190px}',
+  '.who .dev-name{flex:none}',
   '.brand{display:flex;align-items:center;gap:var(--u-3);font-weight:700;letter-spacing:-.02em}',
   '.brand .dot{width:26px;height:26px;border-radius:8px;background:linear-gradient(135deg,hsl(var(--primary)),hsl(var(--primary)/.65));box-shadow:0 6px 18px hsl(var(--primary)/.35)}',
   '.topbar .spacer{flex:1}',
-  '@media (max-width:820px){.who{display:none}}',
+  '@media (max-width:820px){.who .acct{display:none}}',
   '@media (max-width:640px){.brand .wordmark{display:none}.nav{margin-left:0}}',
-  '@media (max-width:520px){.navlink{padding:6px 10px;font-size:13px}.topbar{gap:var(--u-3)}}',
+  '@media (max-width:520px){.navlink{padding:6px 10px;font-size:13px}.topbar{gap:var(--u-3)}.avatar{display:none}.topbar .spacer{min-width:var(--u-2)}}',
   '.wrap{max-width:1252px;margin:0 auto;padding:var(--u-8) clamp(var(--u-6),3vw,var(--u-9))}',
   '.grid-phi{display:grid;grid-template-columns:var(--phi-cols);gap:var(--gap-section);align-items:start}',
   '.grid-phi>*{min-width:0}',
@@ -56,7 +58,7 @@ const CSS = [
   '.input,select,textarea{width:100%;height:var(--h-control);padding:0 var(--u-4);border-radius:var(--r-sm);border:1px solid hsl(var(--input-line));background:hsl(var(--surface-2));color:hsl(var(--text));font:inherit}',
   'textarea{height:auto;padding:var(--u-3) var(--u-4)}',
   '.input:focus,select:focus,textarea:focus{border-color:hsl(var(--ring));box-shadow:0 0 0 3px hsl(var(--ring)/.25);outline:none}',
-  '.btn{display:inline-flex;align-items:center;justify-content:center;gap:var(--u-3);height:var(--h-control);padding:0 var(--u-5);border-radius:var(--r-sm);border:1px solid transparent;background:hsl(var(--primary));color:hsl(var(--primary-fg));font:inherit;font-weight:600;cursor:pointer;transition:filter .12s,transform .12s}',
+  '.btn{white-space:nowrap;display:inline-flex;align-items:center;justify-content:center;gap:var(--u-3);height:var(--h-control);padding:0 var(--u-5);border-radius:var(--r-sm);border:1px solid transparent;background:hsl(var(--primary));color:hsl(var(--primary-fg));font:inherit;font-weight:600;cursor:pointer;transition:filter .12s,transform .12s}',
   '.btn:hover{filter:brightness(.94)}.btn:active{transform:translateY(1px)}',
   '.btn[disabled]{opacity:.55;cursor:not-allowed}',
   '.btn.ghost{background:transparent;border-color:hsl(var(--line));color:hsl(var(--text))}',
@@ -67,6 +69,7 @@ const CSS = [
   '.table-wrap{overflow-x:auto;margin:0 -2px}',
   '.table-scroll{max-height:min(58vh,460px);overflow:auto;border:1px solid hsl(var(--line));border-radius:var(--r-sm)}',
   '.table-scroll .table{min-width:720px}',
+  '.table-scroll td:last-child,.table-scroll th:last-child{position:sticky;right:0;background:hsl(var(--surface))}',
   '.table-scroll thead th{position:sticky;top:0;z-index:1;background:hsl(var(--surface));box-shadow:0 1px 0 hsl(var(--line))}',
   '.toolbar{display:flex;gap:var(--s2);align-items:center;flex-wrap:wrap;margin-bottom:var(--s3)}',
   '.toolbar .input{max-width:260px}',
@@ -198,7 +201,7 @@ const cmdPalette = '<dialog id="cmdk" class="palette" aria-label="命令面板">
   '<div id="cmdk-list" class="cmdk-list" role="listbox" aria-label="结果"></div></dialog>' +
   '<script>(function(){' +
   'var dlg=document.getElementById("cmdk"),input=document.getElementById("cmdk-input"),list=document.getElementById("cmdk-list");' +
-  'var items=[{t:"概览",h:"/"},{t:"我的账户",h:"/account"},{t:"用户与设备",h:"/admin"},{t:"设置",h:"/admin/settings"},{t:"切换主题",a:"theme"},{t:"退出登录",a:"logout"}];' +
+  'var items=[{t:"概览",h:"/"},{t:"我的账户",h:"/account"},{t:"我的设备",h:"/account/devices"},{t:"设备密钥",h:"/account/keys"},{t:"用户与设备",h:"/admin"},{t:"设置",h:"/admin/settings"},{t:"切换主题",a:"theme"},{t:"退出登录",a:"logout"}];' +
   'var filtered=items,idx=0;' +
   'function render(){list.innerHTML=filtered.length?filtered.map(function(it,i){return \'<button type="button" class="cmdk-item\'+(i===idx?" active":"")+\'" role="option" aria-selected="\'+(i===idx)+\'" data-i="\'+i+\'"><span>\'+dshEsc(it.t)+\'</span><span class="muted small">\'+dshEsc(it.h||"")+\'</span></button>\'}).join(""):\'<div class="muted small" style="padding:10px">没有匹配项</div>\'}' +
   'function open(){if(dlg.open)return;input.value="";filtered=items;idx=0;render();dlg.showModal();input.focus()}' +
@@ -214,17 +217,18 @@ const cmdPalette = '<dialog id="cmdk" class="palette" aria-label="命令面板">
   'dlg.addEventListener("click",function(e){if(e.target===dlg)close()});' +
   '})();</script>'
 
-const topbar = (user: string, active: string, deviceUsername?: string): string =>
+const topbar = (user: string, active: string, deviceUsername?: string, isAdmin = false): string =>
   '<a class="skip" href="#main">跳到主内容</a><header class="topbar">' +
   '<a class="brand" href="/" aria-label="DSH Remote 首页"><span class="dot"></span><span class="wordmark">DSH <em>Remote</em></span></a>' +
   '<nav class="nav" aria-label="主导航">' +
   navlink('/', '概览', active === 'home', 'home') +
   navlink('/account', '账户', active === 'account', 'user') +
-  navlink('/admin', '管理', active === 'admin', 'shield') +
+  (isAdmin ? navlink('/admin', '管理', active === 'admin', 'shield') : '') +
   '</nav><div class="spacer"></div>' +
   '<div class="user"><span class="avatar" aria-hidden="true">' + esc(user.slice(0, 1)) + '</span>' +
-  '<span class="who" title="' + attr(deviceUsername ? user + ' · ' + deviceUsername : user) + '">' + esc(user) +
-  (deviceUsername ? ' <span class="dev-name mono">' + esc(deviceUsername) + '</span>' : '') + '</span></div>' +
+  '<span class="who" title="' + attr(deviceUsername ? user + ' · ' + deviceUsername : user) + '">' +
+  '<span class="acct">' + esc(user) + '</span>' +
+  (deviceUsername ? '<span class="dev-name mono">' + esc(deviceUsername) + '</span>' : '') + '</span></div>' +
   themeButton +
   '<button class="icon-btn cmdk-btn" type="button" id="cmdk-open" aria-label="打开命令面板" aria-keyshortcuts="Meta+K Control+K" title="命令面板 ⌘K">' + icon('search') + '</button>' +
   '<form method="post" action="/api/v1/auth/logout" style="margin:0"><button class="btn ghost sm" type="submit">退出</button></form></header>' + cmdPalette
@@ -341,7 +345,7 @@ export function bindPage(email: string, onlySso: boolean, background?: string): 
 }
 
 export function homePage(username: string, role: string, deviceUsername = ''): string {
-  return shell('概览', topbar(username, 'home', deviceUsername) + '<main class="wrap" id="main">' +
+  return shell('概览', topbar(username, 'home', deviceUsername, role === 'admin') + '<main class="wrap" id="main">' +
     '<div class="grid-phi"><div>' +
     '<section class="card"><h1 style="font-size:26px">你好，' + esc(username) + '</h1>' +
     '<p class="muted" style="margin:10px 0 0">从这里管理账户、设备与这台服务器。业务流量端到端加密，服务器只转发密文。</p></section>' +
@@ -363,14 +367,14 @@ const accountTabs = (active: 'profile' | 'devices' | 'keys'): string =>
     .map(([id, label, href]) => '<a class="subtab' + (active === id ? ' active' : '') + '" href="' + href + '"' + (active === id ? ' aria-current="page"' : '') + '>' + label + '</a>').join('') +
   '</nav>'
 
-export function accountPage(username: string, email: string, oidcBound: boolean, onlySso: boolean, background?: string, deviceUsername = ''): string {
+export function accountPage(username: string, email: string, oidcBound: boolean, onlySso: boolean, background?: string, deviceUsername = '', isAdmin = false): string {
   const passwordCard = onlySso
     ? card('修改密码', '<p class="muted small" style="margin:0">仅 SSO 模式已启用，密码修改不可用。</p>')
     : card('修改密码', '<div class="stack">' +
         '<div><label class="label" for="cur-pass">当前密码</label><input class="input" id="cur-pass" type="password" autocomplete="current-password"></div>' +
         '<div><label class="label" for="new-pass">新密码</label><input class="input" id="new-pass" type="password" placeholder="至少 12 位" autocomplete="new-password"></div>' +
         '<button class="btn" type="button" id="change-pw">保存</button></div>')
-  return shell('我的账户', topbar(username, 'account', deviceUsername) + accountTabs('profile') + '<main class="wrap" id="main"><div class="grid-phi"><div>' +
+  return shell('我的账户', topbar(username, 'account', deviceUsername, isAdmin) + accountTabs('profile') + '<main class="wrap" id="main"><div class="grid-phi"><div>' +
     card('账户', '<div class="grid-2">' +
       '<div><div class="label">登录邮箱</div><div class="mono">' + esc(email || '未设置') + '</div></div>' +
       '<div><div class="label">邮箱状态</div><div><span class="badge">' + (email ? '已验证' : '未设置') + '</span></div></div>' +
@@ -389,7 +393,7 @@ export function accountPage(username: string, email: string, oidcBound: boolean,
       '<p class="small muted" style="margin:10px 0 0">设备用「设备用户名 + 设备密钥」登录，与网页密码相互独立。</p>') +
     card('单点登录', '<p class="muted small" style="margin:0 0 12px">' + (oidcBound ? '已绑定 OIDC 身份。' : '尚未绑定 OIDC 身份。') + '</p>' +
       '<div class="stack"><a class="btn ghost block" href="/api/v1/auth/oidc/start">绑定 / 重新绑定</a>' +
-      (onlySso ? '' : '<button class="btn danger block" type="button" id="unbind">解绑</button>') + '</div>') +
+      (onlySso || !oidcBound ? '' : '<button class="btn danger block" type="button" id="unbind">解绑</button>') + '</div>') +
     '</aside></div></main>' +
     '<script>' +
     'function $(id){return document.getElementById(id)}' +
@@ -400,22 +404,23 @@ export function accountPage(username: string, email: string, oidcBound: boolean,
     '</script>', background, 'console')
 }
 
-export function accountDevicesPage(username: string, background?: string, deviceUsername = ''): string {
-  return shell('我的设备', topbar(username, 'account', deviceUsername) + accountTabs('devices') + '<main class="wrap" id="main">' +
+export function accountDevicesPage(username: string, background?: string, deviceUsername = '', isAdmin = false): string {
+  return shell('我的设备', topbar(username, 'account', deviceUsername, isAdmin) + accountTabs('devices') + '<main class="wrap" id="main">' +
     card('我的设备', '<div class="toolbar">' +
       '<input class="input" id="q" type="search" placeholder="搜索设备名或系统" aria-label="搜索设备">' +
       '<div class="chips" role="group" aria-label="按角色筛选"><button class="chip" data-role="all" aria-pressed="true">全部</button><button class="chip" data-role="host" aria-pressed="false">Host</button><button class="chip" data-role="client" aria-pressed="false">Client</button></div>' +
       '<div class="chips" role="group" aria-label="按状态筛选"><button class="chip" data-online="all" aria-pressed="true">全部状态</button><button class="chip" data-online="online" aria-pressed="false">在线</button><button class="chip" data-online="offline" aria-pressed="false">离线</button></div></div>' +
-      '<div class="table-scroll"><table class="table"><thead><tr><th scope="col">设备</th><th scope="col">角色</th><th scope="col">系统</th><th scope="col">插件版本</th><th scope="col">DSH 版本</th><th scope="col">状态</th><th scope="col">最近在线</th></tr></thead><tbody id="devices"><tr><td colspan="7" class="muted">加载中…</td></tr></tbody></table></div>' +
+      '<div class="table-scroll"><table class="table"><thead><tr><th scope="col">设备</th><th scope="col">角色</th><th scope="col">系统</th><th scope="col">插件版本</th><th scope="col">DSH 版本</th><th scope="col">状态</th><th scope="col">最近在线</th></tr></thead><tbody id="devices"><tr><td colspan="7"><span class="sk"></span></td></tr><tr><td colspan="7"><span class="sk"></span></td></tr><tr><td colspan="7"><span class="sk"></span></td></tr></tbody></table></div>' +
       '<p class="small muted" style="margin:10px 0 0">设备列表按账号隔离；在「设备密钥」页吊销密钥会让对应设备立即下线。</p>', '仅你自己可见') +
     '</main>' +
     '<script>' +
     'function $(id){return document.getElementById(id)}' +
     'var all=[];var role="all";var online="all";' +
+    'function emptyDevices(){return all.length?"没有匹配的设备，试试清除搜索或筛选":"还没有设备接入，先到「设备密钥」生成一把密钥"}' +
     'function render(){var q=$("q").value.trim().toLowerCase();var rows=all.filter(function(d){' +
     'if(role!=="all"&&d.role!==role)return false;if(online==="online"&&!d.online)return false;if(online==="offline"&&d.online)return false;' +
     'if(!q)return true;return ((d.name||"")+" "+(d.platform||"")).toLowerCase().indexOf(q)>=0});' +
-    '$("devices").innerHTML=rows.length?rows.map(function(d){return \'<tr><td>\'+dshEsc(d.name)+\'</td><td>\'+dshEsc(d.role)+\'</td><td>\'+dshEsc(d.platform||"—")+\'</td><td class="mono small">\'+dshEsc(d.version||"—")+\'</td><td class="mono small">\'+dshEsc(d.harnessVersion||"—")+\'</td><td>\'+(d.online?\'<span class="badge ok">在线</span>\':\'<span class="badge">离线</span>\')+\'</td><td class="muted small">\'+(d.lastSeenAt?dshEsc(new Date(d.lastSeenAt).toLocaleString()):"—")+\'</td></tr>\'}).join(""):\'<tr><td colspan="7" class="muted">没有匹配的设备</td></tr>\'}' +
+    '$("devices").innerHTML=rows.length?rows.map(function(d){return \'<tr><td>\'+dshEsc(d.name)+\'</td><td>\'+dshEsc(d.role)+\'</td><td>\'+dshEsc(d.platform||"—")+\'</td><td class="mono small">\'+dshEsc(d.version||"—")+\'</td><td class="mono small">\'+dshEsc(d.harnessVersion||"—")+\'</td><td>\'+(d.online?\'<span class="badge ok">在线</span>\':\'<span class="badge">离线</span>\')+\'</td><td class="muted small">\'+(d.lastSeenAt?dshEsc(new Date(d.lastSeenAt).toLocaleString()):"—")+\'</td></tr>\'}).join(""):\'<tr><td colspan="7" class="muted">\'+emptyDevices()+\'</td></tr>\'}' +
     'dshApi("/api/v1/account/devices").then(function(r){all=r.body.items||[];render()}).catch(function(){$("devices").innerHTML=\'<tr><td colspan="7" class="muted">加载失败，请刷新重试</td></tr>\'})' +
     ';$("q").addEventListener("input",render);' +
     'document.addEventListener("click",function(e){var b=e.target.closest("button.chip");if(!b)return;' +
@@ -424,24 +429,25 @@ export function accountDevicesPage(username: string, background?: string, device
     '</script>', background, 'console')
 }
 
-export function accountKeysPage(username: string, background?: string, deviceUsername = ''): string {
-  return shell('设备密钥', topbar(username, 'account', deviceUsername) + accountTabs('keys') + '<main class="wrap" id="main">' +
+export function accountKeysPage(username: string, background?: string, deviceUsername = '', isAdmin = false): string {
+  return shell('设备密钥', topbar(username, 'account', deviceUsername, isAdmin) + accountTabs('keys') + '<main class="wrap" id="main">' +
     card('设备密钥', '<div class="toolbar"><input class="input" id="q" type="search" placeholder="搜索标签" aria-label="搜索密钥">' +
       '<div class="chips" role="group" aria-label="按状态筛选"><button class="chip" data-state="all" aria-pressed="true">全部</button><button class="chip" data-state="active" aria-pressed="false">正常</button><button class="chip" data-state="revoked" aria-pressed="false">已吊销</button></div></div>' +
-      '<div class="table-scroll"><table class="table"><thead><tr><th scope="col">标签</th><th scope="col">设备数</th><th scope="col">状态</th><th scope="col">密钥</th><th scope="col">创建时间</th><th scope="col">操作</th></tr></thead><tbody id="keys"><tr><td colspan="6" class="muted">加载中…</td></tr></tbody></table></div>' +
+      '<div class="table-scroll"><table class="table"><thead><tr><th scope="col">标签</th><th scope="col">设备数</th><th scope="col">状态</th><th scope="col">密钥</th><th scope="col">创建时间</th><th scope="col">操作</th></tr></thead><tbody id="keys"><tr><td colspan="6"><span class="sk"></span></td></tr><tr><td colspan="6"><span class="sk"></span></td></tr><tr><td colspan="6"><span class="sk"></span></td></tr></tbody></table></div>' +
       '<div class="row" style="margin-top:12px"><div style="flex:1;min-width:200px"><label class="label" for="key-label">新密钥标签</label><input class="input" id="key-label" placeholder="例如 客厅 iPad" maxlength="64"></div>' +
       '<button class="btn" type="button" id="create-key">生成密钥</button></div>' +
       '<p class="small muted" style="margin:10px 0 0">密钥随时可以查看和复制；吊销后用它接入的设备会立即掉线，且同一设备无法重新接入。</p>', '仅你自己可见') +
     '</main>' +
     '<script>' +
     'var all=[];var state="all";' +
+    'function emptyKeys(){return all.length?"没有匹配的密钥":"还没有密钥，使用下方「生成密钥」创建"}' +
     'function render(){var q=$("q").value.trim().toLowerCase();var rows=all.filter(function(k){' +
     'if(state==="active"&&k.revoked)return false;if(state==="revoked"&&!k.revoked)return false;' +
     'return !q||(k.label||"").toLowerCase().indexOf(q)>=0});' +
-    '$("keys").innerHTML=rows.length?rows.map(function(k){return \'<tr><td>\'+dshEsc(k.label)+\'</td><td><span class="badge">\'+k.deviceCount+\'</span></td><td>\'+(k.revoked?\'<span class="badge off">已吊销</span>\':\'<span class="badge ok">正常</span>\')+\'</td>\' +' +
+    '$("keys").innerHTML=rows.length?rows.map(function(k){return \'<tr><td>\'+dshEsc(k.label==="default"?"默认密钥":k.label)+\'</td><td><span class="badge">\'+k.deviceCount+\'</span></td><td>\'+(k.revoked?\'<span class="badge off">已吊销</span>\':\'<span class="badge ok">正常</span>\')+\'</td>\' +' +
     '\'<td>\'+(k.key?\'<span class="mono small keymask" data-key="\'+dshEsc(k.key)+\'">••••••••••••</span> <button class="btn ghost sm" data-a="reveal">显示</button><button class="btn ghost sm" data-a="copy" data-key="\'+dshEsc(k.key)+\'">复制</button>\':\'<span class="muted small">不可查看（旧密钥）</span>\')+\'</td>\' +' +
     '\'<td class="muted small">\'+(k.createdAt?dshEsc(new Date(k.createdAt).toLocaleString()):"—")+\'</td>\' +' +
-    '\'<td>\'+(k.revoked||k.id==="unbound"?"":\'<button class="btn danger sm" data-a="revoke" data-id="\'+dshEsc(k.id)+\'" aria-label="吊销密钥 \'+dshEsc(k.label)+\'">吊销</button>\')+\'</td></tr>\'}).join(""):\'<tr><td colspan="6" class="muted">没有匹配的密钥</td></tr>\'}' +
+    '\'<td>\'+(k.revoked||k.id==="unbound"?"":\'<button class="btn danger sm" data-a="revoke" data-id="\'+dshEsc(k.id)+\'" aria-label="吊销密钥 \'+dshEsc(k.label==="default"?"默认密钥":k.label)+\'">吊销</button>\')+\'</td></tr>\'}).join(""):\'<tr><td colspan="6" class="muted">\'+emptyKeys()+\'</td></tr>\'}' +
     'function load(){dshApi("/api/v1/account/device-keys").then(function(r){all=r.body.keys||[];render()}).catch(function(){$("keys").innerHTML=\'<tr><td colspan="6" class="muted">加载失败，请刷新重试</td></tr>\'})}' +
     '$("q").addEventListener("input",render);' +
     'document.querySelectorAll("[data-state]").forEach(function(b){b.onclick=function(){state=b.dataset.state;document.querySelectorAll("[data-state]").forEach(function(x){x.setAttribute("aria-pressed",String(x===b))});render()}});' +
@@ -561,7 +567,7 @@ export function adminSettingsPage(username: string, background?: string, deviceU
     '$("smtp-host").value=s.host||"";$("smtp-port").value=s.port||587;$("smtp-secure").checked=!!s.secure;$("smtp-user").value=s.user||"";$("smtp-from").value=s.from||""})}' +
     '$("save-server").onclick=function(){dshPut("/api/v1/admin/settings",{server:{publicUrl:$("public-url").value.trim(),trustedProxyIps:$("trusted-proxies").value}}).then(function(r){dshToast(r.ok?"已保存":dshErr(r.body.error&&r.body.error.code,r.status),r.ok?"ok":"err")})};' +
     '$("save-ui").onclick=function(){dshPut("/api/v1/admin/settings",{ui:{backgroundUrl:$("bg-url").value.trim()}}).then(function(r){dshToast(r.ok?"已保存，刷新可见":dshErr(r.body.error&&r.body.error.code,r.status),r.ok?"ok":"err")})};' +
-    '$("save-oidc").onclick=function(){dshPut("/api/v1/admin/settings",{oidc:{enabled:$("oidc-enabled").checked,onlySso:$("only-sso").checked,bindRequireVerification:$("bind-require").checked,issuer:$("issuer").value.trim(),clientId:$("client-id").value.trim(),clientSecret:$("client-secret").value,scopes:$("scopes").value,allowedDomains:$("allowed-domains").value}}).then(function(r){if(r.ok){$("client-secret").value="";dshToast("已保存","ok")}else dshToast(dshErr(r.body.error&&r.body.error.code,r.status),"err")})};' +
+    '$("save-oidc").onclick=function(){if($("only-sso").checked&&!confirm("开启仅 SSO 后，除当前会话外的密码登录会话会被清除，密码登录与找回密码将不可用。继续？"))return;dshPut("/api/v1/admin/settings",{oidc:{enabled:$("oidc-enabled").checked,onlySso:$("only-sso").checked,bindRequireVerification:$("bind-require").checked,issuer:$("issuer").value.trim(),clientId:$("client-id").value.trim(),clientSecret:$("client-secret").value,scopes:$("scopes").value,allowedDomains:$("allowed-domains").value}}).then(function(r){if(r.ok){$("client-secret").value="";dshToast("已保存","ok")}else dshToast(dshErr(r.body.error&&r.body.error.code,r.status),"err")})};' +
     '$("save-smtp").onclick=function(){dshPut("/api/v1/admin/settings",{smtp:{host:$("smtp-host").value.trim(),port:+$("smtp-port").value,secure:$("smtp-secure").checked,user:$("smtp-user").value,pass:$("smtp-pass").value,from:$("smtp-from").value}}).then(function(r){if(r.ok){$("smtp-pass").value="";dshToast("已保存","ok")}else dshToast(dshErr(r.body.error&&r.body.error.code,r.status),"err")})};' +
     '$("test-smtp").onclick=function(){dshPost("/api/v1/admin/smtp/test",{to:$("smtp-test-to").value.trim()}).then(function(r){dshToast(r.ok?"测试邮件已发送":dshErr(r.body.error&&r.body.error.code,r.status),r.ok?"ok":"err")})};' +
     '$("save-limits").onclick=function(){dshPut("/api/v1/admin/settings",{limits:{sessionTtlMs:+$("session-ttl").value,userConnectionLimit:+$("conn-limit").value,userRatePerMinute:+$("user-rate").value,anonRatePerMinute:+$("anon-rate").value},ice:{stunUrls:$("stun").value,turnUrls:$("turn").value,turnUsername:$("turn-user").value,turnPassword:$("turn-pass").value}}).then(function(r){if(r.ok){$("turn-pass").value="";dshToast("已保存","ok")}else dshToast(dshErr(r.body.error&&r.body.error.code,r.status),"err")})};' +

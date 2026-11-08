@@ -652,9 +652,10 @@ export function createApp(settings: Settings, deps: { pool?: Pool; mailer?: Mail
       if (!user) return redirect(res, '/login')
       const bg = runtime.current.ui.backgroundUrl
       const device = user.device_username ?? ''
-      if (path === '/account/devices') return html(res, 200, accountDevicesPage(user.username, bg, device))
-      if (path === '/account/keys') return html(res, 200, accountKeysPage(user.username, bg, device))
-      return html(res, 200, accountPage(user.username, user.email ?? '', Boolean(user.oidc_subject), runtime.current.oidc.onlySso, bg, device))
+      const admin = user.role === 'admin'
+      if (path === '/account/devices') return html(res, 200, accountDevicesPage(user.username, bg, device, admin))
+      if (path === '/account/keys') return html(res, 200, accountKeysPage(user.username, bg, device, admin))
+      return html(res, 200, accountPage(user.username, user.email ?? '', Boolean(user.oidc_subject), runtime.current.oidc.onlySso, bg, device, admin))
     }
     if (method === 'GET' && (path === '/admin' || path === '/admin/settings')) {
       const user = await sessionUser(req)

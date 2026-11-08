@@ -221,6 +221,13 @@ check('搜索可过滤设备', filtered.includes('Nina 的 Mac') && !filtered.in
 await page.fill('#q', '')
 const topbarText = (await page.locator('header.topbar').innerText()).replace(/\s+/g, ' ')
 check('顶栏显示设备用户名', /dev-[a-z0-9]+/.test(topbarText), topbarText.slice(0, 60))
+const devBox = await page.evaluate(() => {
+  const el = document.querySelector('.who .dev-name')
+  if (!el) return null
+  const box = el.getBoundingClientRect(); const who = el.closest('.who').getBoundingClientRect()
+  return { visible: box.width > 0, clipped: box.right > who.right + 1 }
+})
+check('顶栏设备用户名未被裁剪', Boolean(devBox && devBox.visible && !devBox.clipped), JSON.stringify(devBox))
 
 // ── 5. control plane ────────────────────────────────────────────────────────
 step('5. 一次真实远程连接（握手 + 双向密文）')

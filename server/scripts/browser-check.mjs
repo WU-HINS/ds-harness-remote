@@ -67,6 +67,15 @@ await page.screenshot({ path: '/tmp/bv/shots/02-home.png', fullPage: true })
 // 3. topbar chrome
 check('topbar visible', await page.locator('header.topbar').isVisible())
 check('nav icons rendered', await page.locator('.navlink .ico').count() >= 3)
+const devName = await page.evaluate(() => {
+  const el = document.querySelector('.who .dev-name')
+  if (!el) return null
+  const box = el.getBoundingClientRect()
+  const who = el.closest('.who').getBoundingClientRect()
+  return { text: el.textContent.trim(), visible: box.width > 0, clipped: box.right > who.right + 1 || box.left < who.left - 1 }
+})
+check('device username visible beside the account name', Boolean(devName && /^dev-/.test(devName.text) && devName.visible && !devName.clipped), JSON.stringify(devName))
+
 check('avatar shows initial', (await page.locator('.avatar').innerText()).trim().toUpperCase() === 'B')
 
 // 4. command palette: keyboard open, filter, enter
@@ -125,6 +134,12 @@ await page.goto(BASE + '/admin', { waitUntil: 'domcontentloaded' })
 const overflow = await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth)
 check('no horizontal overflow at 360px', overflow <= 1, 'overflow=' + overflow)
 const labelsHidden = await page.locator('.navlink .lbl').first().isHidden()
+const mobileDev = await page.evaluate(() => {
+  const el = document.querySelector('.who .dev-name')
+  return el ? { text: el.textContent.trim(), visible: getComputedStyle(el).display !== 'none' } : null
+})
+check('device username survives mobile', Boolean(mobileDev && /^dev-/.test(mobileDev.text) && mobileDev.visible), JSON.stringify(mobileDev))
+
 check('nav labels collapse under 640px', labelsHidden)
 await page.screenshot({ path: '/tmp/bv/shots/07-admin-mobile.png', fullPage: true })
 
