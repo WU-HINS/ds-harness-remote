@@ -31,7 +31,8 @@ check('2 create user', created.status === 201)
 const aliceId = created.body.user.id
 let users = await req('/api/v1/admin/users', { headers: { cookie: admin } })
 const aliceRow = users.body.users.find(u => u.username === 'alice')
-check('3 virtual device username', /^dev-[a-z0-9]{6,}$/.test(aliceRow.deviceUsername), aliceRow.deviceUsername)
+// The suffix is base64url with non-alphanumerics stripped, so its length varies.
+check('3 virtual device username', /^dev-[a-z0-9]{4,10}$/.test(aliceRow.deviceUsername), aliceRow.deviceUsername)
 check('4 exactly one initial key', aliceRow.deviceKeys === 1)
 
 // Keys belong to the owner: the console never sees or mints them.
