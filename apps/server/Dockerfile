@@ -29,7 +29,8 @@ RUN rm -rf /out/node_modules/@dsh-remote/protocol \
 FROM node:22-bookworm-slim AS runtime
 ENV NODE_ENV=production \
     DSH_SERVER_HOST=0.0.0.0 \
-    DSH_SERVER_PORT=8080 \
+    DSH_SERVER_PORT=8080
+
 WORKDIR /app
 COPY --from=build --chown=node:node /out/ ./
 RUN mkdir /data && chown node:node /data
