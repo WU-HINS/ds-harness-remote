@@ -11,6 +11,8 @@
 // repository dependency, so CI does not run it.
 
 import { chromium } from 'playwright'
+import { dirname, join } from 'node:path'
+import { fileURLToPath, pathToFileURL } from 'node:url'
 import { mkdirSync } from 'node:fs'
 
 mkdirSync('browser-shots', { recursive: true })
@@ -24,7 +26,8 @@ process.env.DSH_SERVER_PUBLIC_URL = BASE
 const SETUP_KEY = process.env.SETUP_KEY ?? 'browser-check-key'
 process.env.DSH_SETUP_KEY = SETUP_KEY
 process.env.DSH_SERVER_LOG_LEVEL = 'error'
-await import('file:///data/dsh/workspace/ds-harness-remote/repo/server/dist/main.js')
+const here = dirname(fileURLToPath(import.meta.url))
+await import(pathToFileURL(join(here, '..', 'dist', 'main.js')).href)
 
 for (let i = 0; i < 60; i++) {
   try { const r = await fetch(BASE + '/healthz'); if (r.ok) break } catch {}

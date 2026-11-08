@@ -68,3 +68,16 @@ DATABASE_URL=postgres://dsh:dsh@127.0.0.1:5432/dshbrowser node server/scripts/br
 ```
 
 Screenshots land in `./browser-shots/`.
+
+## Protocol walkthrough
+
+`server/scripts/protocol-walkthrough.mjs` drives two simulated peers through the whole
+control plane against a real server: hello, heartbeat, connect request/accept, the 120 s
+signalling window, the Noise handshake gate, ordered relay counters, replay rejection,
+transport selection, presence, cross-tenant isolation, refresh rotation and key revocation.
+CI runs it on a fresh database after the store tests.
+
+```bash
+pnpm build
+DATABASE_URL=postgres://dsh:dsh@127.0.0.1:5432/dshproto node server/scripts/protocol-walkthrough.mjs
+```

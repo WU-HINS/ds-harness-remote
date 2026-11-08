@@ -69,6 +69,18 @@ jobs:
         env:
           DATABASE_URL: postgres://dsh:dsh@127.0.0.1:5432/dsh
         run: pnpm test:pg
+      - name: Protocol walkthrough (two simulated peers)
+        env:
+          DATABASE_URL: postgres://dsh:dsh@127.0.0.1:5432/dshwalk
+        run: |
+          (cd server && node --input-type=module -e "
+            import pg from 'pg'
+            const client = new pg.Client({ connectionString: 'postgres://dsh:dsh@127.0.0.1:5432/postgres' })
+            await client.connect()
+            await client.query('CREATE DATABASE dshwalk')
+            await client.end()
+          ")
+          node server/scripts/protocol-walkthrough.mjs
 
   docker-build:
     name: Build image (no push)
