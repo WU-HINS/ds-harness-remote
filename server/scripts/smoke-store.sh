@@ -4,6 +4,12 @@
 set -euo pipefail
 cd "$(dirname "$0")/.."
 OUT=".smoke"
+# The suite runs compiled copies under .smoke/build, so point the server at the
+# real bundle instead of guessing relative paths.
+if [ ! -f ../web/dist/manifest.json ]; then
+  ( cd ../web && node build.mjs >/dev/null )
+fi
+export DSH_WEB_DIR="${DSH_WEB_DIR:-$(cd ../web/dist && pwd)}"
 TSC="${TSC:-npx --yes tsc}"
 rm -rf "$OUT"
 mkdir -p "$OUT/src" "$OUT/node_modules/@dsh-remote/protocol"

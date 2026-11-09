@@ -1,4 +1,11 @@
+import { createHash } from 'node:crypto'
 import { webAssets } from './assets.js'
+
+// Applied before first paint so a dark-mode reader never sees a white flash.
+// The server hashes this exact string and pins it in the CSP instead of
+// allowing 'unsafe-inline'.
+const THEME_BOOT = "(function(){try{var t=localStorage.getItem('theme');if(t){document.documentElement.dataset.theme=t}}catch(e){}})();"
+export const THEME_BOOT_HASH = createHash('sha256').update(THEME_BOOT).digest('base64')
 // DSH Remote UI
 
 
@@ -19,6 +26,7 @@ const shell = (title: string, body: string, background?: string, surface: 'publi
   '<meta name="viewport" content="width=device-width,initial-scale=1">' +
   '<title>' + esc(title) + ' · DSH Remote</title>' +
   '<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 32 32%22%3E%3Crect width=%2232%22 height=%2232%22 rx=%228%22 fill=%22%235b8cff%22/%3E%3Cpath d=%22M9 21V11l7 5 7-5v10%22 stroke=%22white%22 stroke-width=%222.4%22 fill=%22none%22 stroke-linecap=%22round%22 stroke-linejoin=%22round%22/%3E%3C/svg%3E">' +
+  '<script>' + THEME_BOOT + '</script>' +
   '<link rel="stylesheet" href="/assets/' + esc(webAssets?.css ?? '') + '">' +
   '<script src="/assets/' + esc(webAssets?.js ?? '') + '" defer></script>' +
   '</head><body data-page="' + attr(page) + '"' + bgStyle(background) + '><div id="hint" class="hintbar" role="status" aria-live="polite"></div>' + body + '</body></html>'

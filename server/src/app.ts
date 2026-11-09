@@ -1,5 +1,6 @@
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http'
 import { readAsset, webAssetsMissing } from './assets.js'
+import { THEME_BOOT_HASH } from './pages.js'
 import { isIP } from 'node:net'
 import { randomUUID } from 'node:crypto'
 import { Pool } from 'pg'
@@ -242,7 +243,7 @@ export function createApp(settings: Settings, deps: { pool?: Pool; mailer?: Mail
     const method = req.method ?? 'GET'
     res.setHeader('X-Content-Type-Options', 'nosniff')
     res.setHeader('Referrer-Policy', 'same-origin')
-    res.setHeader('Content-Security-Policy', "default-src 'self'; img-src 'self' https: data:; style-src 'self' 'unsafe-inline'; script-src 'self' 'unsafe-inline'; connect-src 'self'; base-uri 'none'; frame-ancestors 'none'")
+    res.setHeader('Content-Security-Policy', "default-src 'self'; img-src 'self' https: data:; style-src 'self' 'unsafe-inline'; script-src 'self' 'sha256-" + THEME_BOOT_HASH + "'; connect-src 'self'; base-uri 'none'; frame-ancestors 'none'")
     res.setHeader('Cache-Control', 'no-store')
 
     const isCallback = method === 'GET' && path === '/api/v1/auth/oidc/callback'

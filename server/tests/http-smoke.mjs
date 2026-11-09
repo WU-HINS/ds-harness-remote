@@ -55,6 +55,12 @@ check('admin login returns client shape', adminLogin.status === 200 && adminLogi
 const adminCookie = cookieOf(adminLogin)
 
 const homeHtml = String((await req('/', { headers: { cookie: adminCookie } })).body)
+const loginPageRes = await req('/login')
+const csp = loginPageRes.headers.get('content-security-policy') || ''
+check('csp blocks inline scripts', /script-src 'self' 'sha256-[A-Za-z0-9+/=]+'/.test(csp) && !/script-src[^;]*unsafe-inline/.test(csp), csp.slice(0, 90))
+const loginHtml = String(loginPageRes.body)
+check('assets are external', loginHtml.includes('src="/assets/app.') && loginHtml.includes('.js" defer></script>') && /<script>[^<]*localStorage/.test(loginHtml))
+
 check('command palette markup', homeHtml.includes('id="cmdk"') && homeHtml.includes('cmdk-open'))
 check('nav icons rendered', homeHtml.includes('class="ico"') && homeHtml.includes('class="navlink'))
 check('active nav marked', homeHtml.includes('aria-current="page"'))
