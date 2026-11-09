@@ -11,6 +11,7 @@ export function init() {
       if (state === 'revoked' && !k.revoked) return false
       return !q || (k.label || '').toLowerCase().includes(q)
     })
+    $('keys').setAttribute('aria-busy', 'false')
     $('keys').innerHTML = rows.length
       ? rows.map((k) => '<tr><td>' + dshEsc(label(k.label)) + '</td><td><span class="badge">' + k.deviceCount + '</span></td><td>' +
         (k.revoked ? '<span class="badge off">已吊销</span>' : '<span class="badge ok">正常</span>') + '</td><td>' +

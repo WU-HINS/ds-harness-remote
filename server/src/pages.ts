@@ -91,13 +91,13 @@ export function setupPage(setupKey: string, suggestedOrigin = '', error?: string
     '<p class="muted">初始化只需要一次：一个管理员邮箱、一个一次性密钥。完成后这台机器就归你管了。</p></section>' +
     '<section class="panel"><h1 style="font-size:22px;margin-bottom:6px">初始化服务器</h1>' +
     '<p class="muted small" style="margin:0 0 20px">一次性密钥见服务端启动日志，也可由 DSH_SETUP_KEY 指定。</p>' +
-    '<form method="post" action="/api/v1/setup" class="stack">' +
+    '<form id="setup-form" method="post" action="/api/v1/setup" class="stack">' +
     '<div><label class="label" for="setup-key">初始化密钥</label><input class="input mono" id="setup-key" name="key" value="' + esc(key) + '" required autocomplete="off"></div>' +
     '<div><label class="label" for="setup-url">公网地址</label><input class="input" id="setup-url" name="publicUrl" type="url" placeholder="https://remote.example.com" value="' + esc(origin) + '"><span class="small muted">仅 https，可稍后在后台修改</span></div>' +
     '<div><label class="label" for="setup-user">管理员邮箱</label><input class="input" id="setup-user" name="username" type="email" required placeholder="you@example.com" autocomplete="username"><span class="small muted">必须使用邮箱，作为登录账号</span></div>' +
     '<div><label class="label" for="setup-pass">密码</label><input class="input" id="setup-pass" name="password" type="password" required minlength="12" placeholder="至少 12 位" autocomplete="new-password"></div>' +
     '<button class="btn block" type="submit">创建管理员</button></form>' +
-    (error ? '<div class="alert err" role="alert" style="margin-top:14px">' + esc(error) + '</div>' : '') + '</section></div></main>', undefined, 'public', 'setup')
+    '<div id="setup-error" role="alert">' + (error ? '<div class="alert err" style="margin-top:14px">' + esc(error) + '</div>' : '') + '</div></section></div></main>', undefined, 'public', 'setup')
 }
 
 export function loginPage(oidcEnabled: boolean, error?: string, background?: string): string {
@@ -106,13 +106,13 @@ export function loginPage(oidcEnabled: boolean, error?: string, background?: str
     '<p class="lead">你的 Harness，<br>在哪儿都能用</p>' +
     '<p class="muted">登录后即可管理账号、设备与在线主机。所有业务流量端到端加密，服务器只转发密文。</p></section>' +
     '<section class="panel"><div class="row" style="justify-content:space-between"><h1 style="font-size:clamp(20px,4.6vw,22px)">登录</h1>' + themeButton + '</div>' +
-    '<form method="post" action="/api/v1/auth/login" class="stack" style="margin-top:18px">' +
+    '<form id="login-form" method="post" action="/api/v1/auth/login" class="stack" style="margin-top:18px">' +
     '<div><label class="label" for="login-user">邮箱</label><input class="input" id="login-user" name="username" type="email" autocomplete="username" required placeholder="you@example.com"></div>' +
     '<div><label class="label" for="login-pass">密码</label><input class="input" id="login-pass" name="password" type="password" autocomplete="current-password" required placeholder="••••••••"></div>' +
     '<button class="btn block" type="submit">登录</button></form>' +
     (oidcEnabled ? '<div class="divider"></div><a class="btn ghost block" href="/api/v1/auth/oidc/start">使用 SSO 登录</a>' : '') +
     '<p class="small muted" style="margin:16px 0 0"><a href="/register">注册</a> · <a href="/forgot">忘记密码</a></p>' +
-    (error ? '<div class="alert err" role="alert" style="margin-top:14px">' + esc(error) + '</div>' : '') + '</section></div></main>', background, 'public', 'login')
+    '<div id="login-error" role="alert">' + (error ? '<div class="alert err" style="margin-top:14px">' + esc(error) + '</div>' : '') + '</div></section></div></main>', background, 'public', 'login')
 }
 
 export function registerPage(onlySso: boolean, background?: string): string {
@@ -209,7 +209,7 @@ export function accountPage(username: string, email: string, oidcBound: boolean,
     card('安全提示', '<p class="muted small" style="margin:0">设备用「设备用户名 + 设备密钥」登录，与网页密码相互独立。吊销密钥会让对应设备立即下线。</p>') +
     card('单点登录', (oidcError ? '<div class="alert err" role="alert" style="margin:0 0 12px">单点登录未启用或配置有误，请联系管理员。</div>' : '') +
       '<p class="muted small" style="margin:0 0 12px">' + (oidcBound ? '已绑定 OIDC 身份。' : '尚未绑定 OIDC 身份。') + '</p>' +
-      '<div class="stack"><a class="btn ghost block" href="/api/v1/auth/oidc/start">绑定 / 重新绑定</a>' +
+      '<div class="stack"><a class="btn ghost block" href="/api/v1/auth/oidc/start" data-confirm="绑定后可以直接用该 SSO 身份登录，继续？">绑定 / 重新绑定</a>' +
       (onlySso || !oidcBound ? '' : '<button class="btn danger block" type="button" id="unbind">解绑</button>') + '</div>') +
     '</aside></div></main>' ,
      background, 'console', 'account')

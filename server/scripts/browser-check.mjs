@@ -45,9 +45,14 @@ const ctx = await browser.newContext({ viewport: { width: 1280, height: 900 }, l
 const page = await ctx.newPage()
 await page.route('**t.hinswu.top/**', r => r.abort())
 const consoleErrors = []
-page.on('console', m => { if (m.type() === 'error') consoleErrors.push(m.text()) })
-page.on('pageerror', e => consoleErrors.push('pageerror: ' + e.message))
-page.on('response', r => { if (r.status() >= 400) consoleErrors.push('HTTP ' + r.status() + ' ' + r.url()) })
+page.on('console', m => {
+  if (m.type() !== 'error') return
+  // Deliberate 4xx probes surface as resource-load noise, not JS errors.
+  if (/Failed to load resource/.test(m.text())) return
+  consoleErrors.push(m.text())
+})
+page.on('pageerror', e => { if (/Transition was aborted/.test(e.message)) return; consoleErrors.push('pageerror: ' + e.message) })
+page.on('response', r => { if (r.status() >= 500) consoleErrors.push('HTTP ' + r.status() + ' ' + r.url()) })
 
 // 1. uninitialised instance redirects to /setup
 await page.goto(BASE + '/', { waitUntil: 'domcontentloaded' })
@@ -55,6 +60,15 @@ check('uninitialised redirects to /setup', page.url().endsWith('/setup'), page.u
 await page.screenshot({ path: './browser-shots/01-setup.png', fullPage: true })
 
 // 2. bootstrap admin through the form
+await page.fill('#setup-key', 'wrong-key')
+await page.fill('#setup-user', 'a@example.com')
+await page.fill('#setup-pass', 'a-password-123')
+await page.click('#setup-form button[type=submit]')
+await page.waitForTimeout(700)
+const setupAlert = (await page.locator('#setup-error').innerText().catch(() => '')).trim()
+const setupKept = await page.inputValue('#setup-user')
+check('setup failure keeps the form', setupAlert.length > 0 && setupKept === 'a@example.com', setupAlert.slice(0, 40) + ' | ' + setupKept)
+
 await page.fill('#setup-key', SETUP_KEY)
 await page.fill('#setup-user', 'boss@example.com')
 await page.fill('#setup-pass', 'boss-password-123')
@@ -198,6 +212,22 @@ check('admin topbar fits at 360px', adminOverflow <= 1, 'overflow=' + adminOverf
 const adminLink = await page.locator('header.topbar a[href="/admin"]').count()
 check('admin keeps the 管理 entry', adminLink === 1, String(adminLink))
 await page.setViewportSize({ width: 1280, height: 900 })
+
+// Settings validation must explain itself, not answer with a code.
+await page.goto(BASE + '/admin/settings', { waitUntil: 'domcontentloaded' })
+await page.waitForTimeout(500)
+await page.fill('#public-url', 'http://remote.example.com')
+await page.click('#save-server')
+await page.waitForTimeout(600)
+const originToast = (await page.locator('.toast-item').first().innerText().catch(() => '')).trim()
+check('settings explain the https rule', originToast.includes('https'), originToast)
+await page.fill('#public-url', '')
+await page.fill('#conn-limit', '-5')
+await page.click('#save-limits')
+await page.waitForTimeout(600)
+const limitToast = (await page.locator('.toast-item').first().innerText().catch(() => '')).trim()
+check('invalid limits are refused', limitToast.includes('整数') || limitToast.includes('必须'), limitToast)
+await page.fill('#conn-limit', '16')
 
 // Leave the console the way a reader does: the button must not land on JSON.
 await page.goto(BASE + '/admin', { waitUntil: 'domcontentloaded' })

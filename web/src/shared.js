@@ -59,7 +59,13 @@ export function dshApi(path, opts) {
 export const dshPost = (path, body) => dshApi(path, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body || {}) })
 export const dshPut = (path, body) => dshApi(path, { method: 'PUT', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body || {}) })
 export const dshDel = (path) => dshApi(path, { method: 'DELETE' })
-export const dshFail = (body, status) => dshErr(body && body.error && body.error.code, status)
+export const dshFail = (body, status) => {
+  const error = body && body.error
+  if (!error) return dshErr(undefined, status)
+  // The server sends a sentence when it has one; a bare code is translated here.
+  if (typeof error.message === 'string' && error.message !== error.code) return error.message
+  return dshErr(error.code, status)
+}
 
 export function dshCopy(text) {
   if (!navigator.clipboard) return dshHint('请手动选择复制', 'err')
@@ -102,6 +108,10 @@ export function initNavigation() {
 }
 
 export function initChrome() {
+  document.addEventListener('click', (e) => {
+    const a = e.target.closest && e.target.closest('a[data-confirm]')
+    if (a && !confirm(a.getAttribute('data-confirm'))) { e.preventDefault(); e.stopPropagation() }
+  }, true)
   document.addEventListener('click', (e) => {
     const t = e.target.closest && e.target.closest('[data-action=theme]')
     if (t) toggleTheme()

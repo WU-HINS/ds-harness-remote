@@ -12,6 +12,7 @@ export function init() {
       if (!q) return true
       return ((d.name || '') + ' ' + (d.platform || '')).toLowerCase().includes(q)
     })
+    $('devices').setAttribute('aria-busy', 'false')
     $('devices').innerHTML = rows.length
       ? rows.map((d) => '<tr><td>' + dshEsc(d.name) + '</td><td>' + (d.role === 'host' ? '主机' : '客户端') + '</td><td>' + dshEsc(d.platform || '—') +
         '</td><td class="mono small">' + dshEsc(d.version || '—') + '</td><td class="mono small">' + dshEsc(d.harnessVersion || '—') +

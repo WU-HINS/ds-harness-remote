@@ -114,6 +114,19 @@ export class Runtime {
       }
       next.server.publicUrl = parsed.origin
     }
+    const l = next.limits
+    if (!Number.isInteger(l.userConnectionLimit) || l.userConnectionLimit < 1 || l.userConnectionLimit > 1024) {
+      throw new Error('并发连接数必须是 1–1024 之间的整数')
+    }
+    if (!Number.isInteger(l.userRatePerMinute) || l.userRatePerMinute < 1 || l.userRatePerMinute > 100000) {
+      throw new Error('用户每分钟请求数必须是 1–100000 之间的整数')
+    }
+    if (!Number.isInteger(l.anonRatePerMinute) || l.anonRatePerMinute < 1 || l.anonRatePerMinute > 100000) {
+      throw new Error('匿名每分钟请求数必须是 1–100000 之间的整数')
+    }
+    if (!Number.isInteger(l.sessionTtlMs) || l.sessionTtlMs < 60_000 || l.sessionTtlMs > 30 * 86400_000) {
+      throw new Error('会话有效期必须在 1 分钟到 30 天之间')
+    }
     // A background must be https: it is loaded by the browser on the login page.
     if (next.ui.backgroundUrl && !/^https:\/\//i.test(next.ui.backgroundUrl)) throw new Error('背景图必须是 https 地址')
     if (next.oidc.enabled && (!next.oidc.issuer || !next.oidc.clientId)) throw new Error('OIDC 启用时必须填写 issuer 与 clientId')

@@ -264,12 +264,18 @@ export function createApp(settings: Settings, deps: { pool?: Pool; mailer?: Mail
       }
       if (!opaqueSameOrigin && !(derived && sameHost)) throw new ApiError('AUTH_INVALID', 403)
     }
-    if (!isCallback && req.headers['sec-fetch-site'] === 'cross-site') throw new ApiError('AUTH_INVALID', 403)
+    // Documents may legitimately arrive cross-site (identity provider redirects,
+    // external links). Only state-changing requests need the CSRF-style refusal.
+    const safeMethod = method === 'GET' || method === 'HEAD'
+    if (!isCallback && !safeMethod && req.headers['sec-fetch-site'] === 'cross-site') {
+      throw new ApiError('AUTH_INVALID', 403, '跨站请求被拒绝')
+    }
 
-    const asset = path.startsWith('/assets/') ? readAsset(path.slice('/assets/'.length)) : undefined
-    if (asset) {
-      res.writeHead(200, { 'content-type': asset.type, 'cache-control': 'public, max-age=31536000, immutable' })
-      res.end(asset.body)
+    if (path.startsWith('/assets/')) {
+      const found = readAsset(path.slice('/assets/'.length))
+      if (!found) { res.writeHead(404, { 'content-type': 'text/plain; charset=utf-8' }); res.end('asset not found'); return }
+      res.writeHead(200, { 'content-type': found.type, 'cache-control': 'public, max-age=31536000, immutable' })
+      res.end(found.body)
       return
     }
     if (method === 'GET' && path === '/favicon.ico') { res.writeHead(204, { 'cache-control': 'public, max-age=604800' }); res.end(); return }
@@ -286,7 +292,8 @@ export function createApp(settings: Settings, deps: { pool?: Pool; mailer?: Mail
 
     // ── setup ───────────────────────────────────────────────────────────────
     if (method === 'GET' && path === '/setup') {
-      return (await store.countUsers()) === 0 ? html(res, 200, setupPage(url.searchParams.get('key') ?? '', origin)) : redirect(res, '/login')
+      if ((await store.countUsers()) > 0) return redirect(res, '/login')
+      return html(res, 200, setupPage(url.searchParams.get('key') ?? '', origin, loginErrorText(url.searchParams.get('error'))))
     }
     // Original clients discover OAuth providers here before falling back to the
     // legacy per-provider probes; an empty list keeps that path silent.
@@ -306,13 +313,13 @@ export function createApp(settings: Settings, deps: { pool?: Pool; mailer?: Mail
       const username = String(input.username ?? '').trim()
       const password = String(input.password ?? '')
       const EMAIL_ONLY = /^[^@\s]+@[^@\s]+\.[^@\s]+$/
-      if (!EMAIL_ONLY.test(username) || password.length < 12) throw new ApiError('INVALID_EMAIL', 400)
+      if (!EMAIL_ONLY.test(username) || password.length < 12) throw new ApiError('INVALID_EMAIL', 400, '管理员必须使用邮箱，密码至少 12 位')
       const provided = String(input.key ?? url.searchParams.get('key') ?? '')
-      if (!(await store.peekSetupKey(provided))) throw new ApiError('SETUP_KEY_INVALID', 403)
+      if (!(await store.peekSetupKey(provided))) throw new ApiError('SETUP_KEY_INVALID', 403, '初始化密钥无效，请核对启动日志里的密钥')
       const requestedOrigin = String(input.publicUrl ?? '').trim()
       if (requestedOrigin) {
         try { await runtime.update({ server: { publicUrl: requestedOrigin, trustedProxyIps: runtime.current.server.trustedProxyIps } }) }
-        catch (error) { throw new ApiError('INVALID_PUBLIC_URL', 400) }
+        catch (error) { throw new ApiError('INVALID_PUBLIC_URL', 400, error instanceof Error ? error.message : '公网地址不合法') }
       }
       const { user, deviceKey } = await store.createFirstAdmin(username, password)
       await store.setEmail(user.id, username, true).catch(() => undefined)
@@ -364,10 +371,20 @@ export function createApp(settings: Settings, deps: { pool?: Pool; mailer?: Mail
       }
       const user = await store.findUserByLogin(login).catch(() => undefined)
       if (!user) await verifyPasswordAsync(secret, 'scrypt$AAAAAAAAAAAAAAAAAAAAAA$AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA').catch(() => false)
-      if (user && user.email && user.email_verified === false) throw new ApiError('EMAIL_UNVERIFIED', 403)
-      if (!user || user.disabled || !(await verifyPasswordAsync(secret, user.password_hash))) {
+      if (user && user.email && user.email_verified === false) throw new ApiError('EMAIL_UNVERIFIED', 403, '邮箱尚未验证')
+      if (!user) {
+        // Same work as a real verification so a missing account is not faster.
+        await verifyPasswordAsync(secret, 'scrypt$AAAAAAAAAAAAAAAAAAAAAA$AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA').catch(() => false)
         await store.audit('login.failure', login)
-        throw new ApiError('AUTH_INVALID', 401)
+        throw new ApiError('AUTH_INVALID', 401, '邮箱或密码不正确')
+      }
+      if (!(await verifyPasswordAsync(secret, user.password_hash))) {
+        await store.audit('login.failure', login)
+        throw new ApiError('AUTH_INVALID', 401, '邮箱或密码不正确')
+      }
+      if (user.disabled) {
+        await store.audit('login.disabled', login, user.id)
+        throw new ApiError('ACCOUNT_DISABLED', 403, '账号已被禁用，请联系管理员')
       }
       const session = await store.createSession(user.id, runtime.limits.sessionTtlMs)
       await store.audit('login.success', login, user.id)
@@ -487,7 +504,7 @@ export function createApp(settings: Settings, deps: { pool?: Pool; mailer?: Mail
       const currentPassword = String(input.currentPassword ?? '')
       const nextPassword = String(input.newPassword ?? '')
       if (nextPassword.length < 12) throw new ApiError('INVALID_MESSAGE', 400)
-      if (!(await verifyPasswordAsync(currentPassword, user.password_hash))) throw new ApiError('AUTH_INVALID', 401)
+      if (!(await verifyPasswordAsync(currentPassword, user.password_hash))) throw new ApiError('PASSWORD_INVALID', 401, '当前密码不正确')
       await store.setPassword(user.id, nextPassword)
       await store.audit('password.changed', user.username, user.id)
       const session = await store.createSession(user.id, runtime.limits.sessionTtlMs)
@@ -572,7 +589,7 @@ export function createApp(settings: Settings, deps: { pool?: Pool; mailer?: Mail
         if (current.email && claims.email && current.email !== claims.email) return redirect(res, '/admin?oidc=email-mismatch')
         await store.linkOidc(current.id, claims.issuer, claims.subject)
         await store.audit('oidc.bound', current.username, current.id)
-        return redirect(res, '/admin?oidc=bound')
+        return redirect(res, current.role === 'admin' ? '/admin?oidc=bound' : '/account?oidc=bound')
       }
 
       const bySub = await store.findUserByOidc(claims.issuer, claims.subject)
@@ -791,7 +808,7 @@ export function createApp(settings: Settings, deps: { pool?: Pool; mailer?: Mail
           }
         }
         const wasOnlySso = runtime.current.oidc.onlySso
-        try { await runtime.update(patch) } catch { throw new ApiError('INVALID_SETTINGS', 400) }
+        try { await runtime.update(patch) } catch (error) { throw new ApiError('INVALID_SETTINGS', 400, error instanceof Error ? error.message : '设置不合法') }
         if (!wasOnlySso && runtime.current.oidc.onlySso) {
           // Existing password sessions must not outlive the switch, except the
           // operator's own session (otherwise nobody can turn it back off).
@@ -852,7 +869,7 @@ export function createApp(settings: Settings, deps: { pool?: Pool; mailer?: Mail
         const role = input.role === 'admin' ? 'admin' as const : 'user' as const
         const email = isEmailName ? username : (typeof input.email === 'string' && input.email.includes('@') ? String(input.email).trim().toLowerCase() : undefined)
         const created = await store.createUser({ username, role, ...(password ? { password } : {}), ...(email ? { email, emailVerified: true } : {}) }).catch((error: any) => {
-          throw new ApiError(String(error?.code) === '23505' ? 'USER_EXISTS' : 'INVALID_MESSAGE', 409)
+          throw new ApiError(String(error?.code) === '23505' ? 'USER_EXISTS' : 'INVALID_MESSAGE', 409, String(error?.code) === '23505' ? '该邮箱或用户名已被使用' : '账号格式不正确')
         })
         await store.audit('user.created', admin.username, created.user.id, { role })
         // The first device key belongs to the user; administrators never see it.
@@ -867,7 +884,7 @@ export function createApp(settings: Settings, deps: { pool?: Pool; mailer?: Mail
           if (!target) throw new ApiError('USER_NOT_FOUND', 404)
           // Administrators are immutable from the console: no disable, no password
           // reset, no role change. Only their own credentials changes apply.
-          if (target.role === 'admin') throw new ApiError('ADMIN_PROTECTED', 409)
+          if (target.role === 'admin') throw new ApiError('ADMIN_PROTECTED', 409, '管理员账号不可禁用或删除')
           if (input.toggle === true) await store.setDisabled(id, !target.disabled)
           await store.audit('user.updated', admin.username, id, { disabled: !target.disabled })
           return json(res, 200, { status: 'ok' })
@@ -876,7 +893,7 @@ export function createApp(settings: Settings, deps: { pool?: Pool; mailer?: Mail
           if (id === admin.id) throw new ApiError('CANNOT_DELETE_SELF', 409)
           const target = await store.findUserById(id)
           if (!target) throw new ApiError('USER_NOT_FOUND', 404)
-          if (target.role === 'admin') throw new ApiError('ADMIN_PROTECTED', 409)
+          if (target.role === 'admin') throw new ApiError('ADMIN_PROTECTED', 409, '管理员账号不可禁用或删除')
           await store.deleteUser(id)
           await store.audit('user.deleted', admin.username, id)
           return json(res, 200, { status: 'deleted' })
@@ -1001,7 +1018,14 @@ export function createApp(settings: Settings, deps: { pool?: Pool; mailer?: Mail
               : path === '/api/v1/auth/password/reset/complete' ? '/forgot?error=' : ''
         if (target) return redirect(res, target + encodeURIComponent(code))
       }
-      json(res, status, { error: { code, message: code, requestId: randomUUID(), retryable: status === 429 || status >= 500 } })
+      if (req.headers['sec-fetch-dest'] === 'document') {
+        res.writeHead(status, { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'no-store' })
+        res.end('<!doctype html><meta charset="utf-8"><title>出错了</title><main style="font:16px system-ui;max-width:36rem;margin:12vh auto;padding:0 1.2rem">' +
+          '<h1 style="font-size:20px">' + code + '</h1><p>' + (error instanceof ApiError && error.detail ? error.detail : '请求未能完成') + '</p>' +
+          '<p><a href="/">返回首页</a> · <a href="/login">重新登录</a></p></main>')
+        return
+      }
+      json(res, status, { error: { code, message: error instanceof ApiError && error.detail ? error.detail : code, requestId: randomUUID(), retryable: status === 429 || status >= 500 } })
     })
   })
 

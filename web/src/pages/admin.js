@@ -1,5 +1,13 @@
 import { $, dshApi, dshPost, dshDel, dshEsc, dshFail, dshToast } from '../shared.js'
 
+const ACTIONS = {
+  'setup.admin_created': '创建管理员', 'account.registered': '注册账号', 'login.success': '登录成功',
+  'login.failure': '登录失败', 'login.disabled': '禁用账号尝试登录', 'password.changed': '修改密码',
+  'email.changed': '换绑邮箱', 'device_key.created': '生成设备密钥', 'device_key.revoked': '吊销设备密钥',
+  'device_login.success': '设备登录', 'device_login.failure': '设备登录失败', 'device.registered': '注册设备',
+  'device.registered_from_account': '账号注册设备', 'oidc.bound': '绑定 SSO', 'oidc.unbound': '解绑 SSO',
+  'user.created': '创建用户', 'user.updated': '更新用户', 'user.deleted': '删除用户', 'device.revoked': '吊销设备',
+}
 const emptyRow = (n, text) => '<tr><td colspan="' + n + '" class="muted">' + text + '</td></tr>'
 
 export function init() {
@@ -47,7 +55,7 @@ export function init() {
     const a = b.getAttribute('data-a')
     if (a === 'toggle') {
       dshApi('/api/v1/admin/users/' + encodeURIComponent(id), { method: 'PATCH', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ toggle: true }) })
-        .then((r) => { if (!r.ok) dshToast(dshFail(r.body, r.status), 'err'); loadUsers() })
+        .then((r) => { dshToast(r.ok ? '状态已更新' : dshFail(r.body, r.status), r.ok ? 'ok' : 'err'); loadUsers() })
     } else if (a === 'del') {
       if (!confirm('删除用户 ' + b.getAttribute('data-name') + '？该用户的设备与会话会立即失效，且不可恢复。')) return
       dshDel('/api/v1/admin/users/' + encodeURIComponent(id)).then((r) => { dshToast(r.ok ? '已删除' : dshFail(r.body, r.status), r.ok ? 'ok' : 'err'); loadUsers() })

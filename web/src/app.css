@@ -59,6 +59,7 @@ h3{font-size:15px}
 .grid-phi>*{min-width:0}
 @media (max-width:900px){.grid-phi{grid-template-columns:1fr;gap:var(--gap-card)}
 }
+.card[id]{scroll-margin-top:82px}
 .card{background:hsl(var(--surface)/var(--panel-alpha));border:1px solid hsl(var(--line));border-radius:12px;padding:var(--pad-card);box-shadow:var(--shadow)}
 .card+.card{margin-top:var(--gap-card)}
 .card h2{display:flex;align-items:center;justify-content:space-between;gap:var(--u-4);padding-bottom:var(--u-4);margin-bottom:var(--u-4);border-bottom:1px solid hsl(var(--line))}

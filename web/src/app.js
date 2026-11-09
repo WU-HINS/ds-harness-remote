@@ -8,8 +8,10 @@ import * as adminSettings from './pages/adminSettings.js'
 import * as register from './pages/register.js'
 import * as forgot from './pages/forgot.js'
 import * as bind from './pages/bind.js'
+import * as setup from './pages/setup.js'
+import * as login from './pages/login.js'
 
-const pages = { home, account, devices, keys, admin, 'admin-settings': adminSettings, register, forgot, bind }
+const pages = { setup, login, home, account, devices, keys, admin, 'admin-settings': adminSettings, register, forgot, bind }
 
 initTheme()
 

@@ -3,7 +3,7 @@ import { SCHEMA_NORMALISE, SCHEMA_STATEMENTS } from './schema.js'
 import { createCipheriv, createDecipheriv, createHash, createHmac, hkdfSync, randomBytes, randomInt, randomUUID, scrypt, scryptSync, timingSafeEqual } from 'node:crypto'
 
 export class ApiError extends Error {
-  constructor(readonly code: string, readonly status = 400) { super(code) }
+  constructor(readonly code: string, readonly status = 400, readonly detail?: string) { super(detail ?? code) }
 }
 
 export const digest = (value: string): string => createHash('sha256').update(value).digest('hex')

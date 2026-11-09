@@ -63,6 +63,11 @@ const oauthStart = await req('/api/v1/auth/oauth/start')
 check('legacy oauth probes answer instead of 404', oauthStatus.status === 200 && oauthStatus.body.configured === false && oauthGh.status === 200, String(oauthStatus.status))
 check('legacy oauth start is a typed 404', oauthStart.status === 404 && oauthStart.body.error.code === 'OAUTH_NOT_CONFIGURED', String(oauthStart.status))
 
+const crossGet = await req('/login', { headers: { 'sec-fetch-site': 'cross-site', 'sec-fetch-dest': 'document' } })
+const crossPost = await req('/api/v1/auth/login', { method: 'POST', ...json({ email: 'a@example.com', password: 'x' }), headers: { 'content-type': 'application/json', 'sec-fetch-site': 'cross-site' } })
+check('cross-site document navigation is allowed', crossGet.status === 200 && String(crossGet.body).includes('<!doctype html'), String(crossGet.status))
+check('cross-site state change is refused', crossPost.status === 403, String(crossPost.status))
+
 check('csp blocks inline scripts', /script-src 'self' 'sha256-[A-Za-z0-9+/=]+'/.test(csp) && !/script-src[^;]*unsafe-inline/.test(csp), csp.slice(0, 90))
 const loginHtml = String(loginPageRes.body)
 check('assets are external', loginHtml.includes('src="/assets/app.') && loginHtml.includes('.js" defer></script>') && /<script>[^<]*localStorage/.test(loginHtml))

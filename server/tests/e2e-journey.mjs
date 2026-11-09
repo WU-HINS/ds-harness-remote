@@ -75,7 +75,7 @@ const state = authUrl.searchParams.get('state')
 const code = 'c1'
 codes.set(code, { nonce: authUrl.searchParams.get('nonce'), sub: 'sub-a', email: 'a@example.com' })
 const bound = await req('/api/v1/auth/oidc/callback?code=' + code + '&state=' + state, { headers: { cookie: cookie + '; dsh_oidc_state=' + state } })
-check('4 oidc bound from settings', bound.status === 302 && bound.headers.get('location') === '/admin?oidc=bound', bound.headers.get('location') || '')
+check('4 oidc bound from settings', bound.status === 302 && /\/(admin|account)\?oidc=bound$/.test(bound.headers.get('location') || ''), bound.headers.get('location') || '')
 
 // 5. 换绑邮箱（新旧双验证）
 await req('/api/v1/auth/email/change/start', { method: 'POST', headers: { 'content-type': 'application/json', cookie }, body: JSON.stringify({ newEmail: 'b@example.com' }) })
