@@ -57,6 +57,12 @@ const adminCookie = cookieOf(adminLogin)
 const homeHtml = String((await req('/', { headers: { cookie: adminCookie } })).body)
 const loginPageRes = await req('/login')
 const csp = loginPageRes.headers.get('content-security-policy') || ''
+const oauthStatus = await req('/api/v1/auth/oauth/status')
+const oauthGh = await req('/api/v1/auth/oauth/github/status')
+const oauthStart = await req('/api/v1/auth/oauth/start')
+check('legacy oauth probes answer instead of 404', oauthStatus.status === 200 && oauthStatus.body.configured === false && oauthGh.status === 200, String(oauthStatus.status))
+check('legacy oauth start is a typed 404', oauthStart.status === 404 && oauthStart.body.error.code === 'OAUTH_NOT_CONFIGURED', String(oauthStart.status))
+
 check('csp blocks inline scripts', /script-src 'self' 'sha256-[A-Za-z0-9+/=]+'/.test(csp) && !/script-src[^;]*unsafe-inline/.test(csp), csp.slice(0, 90))
 const loginHtml = String(loginPageRes.body)
 check('assets are external', loginHtml.includes('src="/assets/app.') && loginHtml.includes('.js" defer></script>') && /<script>[^<]*localStorage/.test(loginHtml))

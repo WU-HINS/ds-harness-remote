@@ -290,6 +290,14 @@ export function createApp(settings: Settings, deps: { pool?: Pool; mailer?: Mail
     // Original clients discover OAuth providers here before falling back to the
     // legacy per-provider probes; an empty list keeps that path silent.
     if (method === 'GET' && path === '/api/v1/auth/oauth/providers') return json(res, 200, { items: [] })
+    // Legacy OAuth (zhihu / github) is not implemented: answer "not configured"
+    // so old clients skip it instead of surfacing METHOD_NOT_FOUND.
+    if (method === 'GET' && (path === '/api/v1/auth/oauth/status' || path === '/api/v1/auth/oauth/github/status')) {
+      return json(res, 200, { configured: false })
+    }
+    if (method === 'GET' && /^\/api\/v1\/auth\/oauth\/(start|github\/start|qr\/start|qr\/[^/]+)$/.test(path)) {
+      throw new ApiError('OAUTH_NOT_CONFIGURED', 404)
+    }
     if (method === 'POST' && path === '/api/v1/setup') {
       if (!ctx.anonLimiter.take('setup:' + clientAddress(req, trustedProxies))) throw new ApiError('RATE_LIMITED', 429)
       if ((await store.countUsers()) > 0) throw new ApiError('SETUP_CLOSED', 409)
@@ -965,6 +973,7 @@ export function createApp(settings: Settings, deps: { pool?: Pool; mailer?: Mail
       throw new ApiError('METHOD_NOT_FOUND', 404)
     }
 
+    console.warn(JSON.stringify({ level: 'warn', event: 'route_not_found', method, path: path.slice(0, 120) }))
     throw new ApiError('METHOD_NOT_FOUND', 404)
   }
 
