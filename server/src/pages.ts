@@ -29,7 +29,7 @@ const shell = (title: string, body: string, background?: string, surface: 'publi
   '<script>' + THEME_BOOT + '</script>' +
   '<link rel="stylesheet" href="/assets/' + esc(webAssets?.css ?? '') + '">' +
   '<script src="/assets/' + esc(webAssets?.js ?? '') + '" defer></script>' +
-  '</head><body data-page="' + attr(page) + '"' + bgStyle(background) + '><div id="hint" class="hintbar" role="status" aria-live="polite"></div>' + body + (surface === 'console' ? cmdPalette + '</div></div>' : '') + '</body></html>'
+  '</head><body data-page="' + attr(page) + '"' + (surface === 'console' ? '' : bgStyle(background)) + '><div id="hint" class="hintbar" role="status" aria-live="polite"></div>' + body + (surface === 'console' ? cmdPalette + '</div></div>' : '') + '</body></html>'
 
 const ICONS: Record<string, string> = {
   home: '<path d="M3 10.7 12 3l9 7.7"/><path d="M5.5 9.5V20a1 1 0 0 0 1 1H10v-6h4v6h3.5a1 1 0 0 0 1-1V9.5"/>',
@@ -186,20 +186,37 @@ export function bindPage(email: string, onlySso: boolean, background?: string): 
     '', background, 'public', 'bind')
 }
 
-export function homePage(username: string, role: string, deviceUsername = ''): string {
+export function homePage(username: string, role: string, deviceUsername = '', serverUrl = ''): string {
+  const row = (label: string, value: string, id: string, copyable = true): string =>
+    '<div class="connect-row"><div><div class="label" style="margin:0 0 2px">' + label + '</div>' +
+    '<div class="mono small" id="' + id + '">' + esc(value || '—') + '</div></div>' +
+    (copyable && value ? '<button class="btn ghost sm" type="button" data-copy="' + esc(value) + '">复制</button>' : '') + '</div>'
   return shell('概览', consoleShell(username, 'home', deviceUsername, role === 'admin') + '<main class="wrap" id="main">' +
     '<div class="grid-phi"><div>' +
-    '<section class="card"><h1 style="font-size:clamp(20px,4.6vw,26px)">你好，' + esc(username) + '</h1>' +
-    '<p class="muted" style="margin:10px 0 0">从这里管理账户、设备与这台服务器。业务流量端到端加密，服务器只转发密文。</p></section>' +
+    '<section class="card"><h1 style="font-size:clamp(20px,4.6vw,26px)">接入你的桌面端</h1>' +
+    '<p class="muted" style="margin:10px 0 18px">在 DSH 桌面端的「设置 → 远程」里填下面三项，桌面端就会出现在设备列表里，手机和平板可以随时连回来。</p>' +
+    '<ol class="steps">' +
+    '<li><div class="step-body">' + row('服务器地址', serverUrl, 'connect-url') +
+    '<p class="small muted" style="margin:6px 0 0">就是你现在打开的地址；换域名后记得在设置里更新。</p></div></li>' +
+    '<li><div class="step-body">' + row('设备用户名', deviceUsername, 'connect-user') +
+    '<p class="small muted" style="margin:6px 0 0">与登录邮箱不同：设备用「用户名 + 密钥」登录，网页密码改了不影响已接入的桌面端。</p></div></li>' +
+    '<li><div class="step-body"><div class="connect-row"><div><div class="label" style="margin:0 0 2px">设备密钥</div>' +
+    '<div class="mono small" id="connect-key">还没有生成</div></div>' +
+    '<div class="row" style="gap:8px"><button class="btn sm" type="button" id="gen-key">生成并复制</button>' +
+    '<a class="btn ghost sm" href="/account/keys">管理密钥</a></div></div>' +
+    '<p class="small muted" style="margin:6px 0 0">密钥只显示这一次，请立刻粘贴到桌面端；丢了就吊销重发。</p></div></li>' +
+    '</ol></section>' +
     '<div class="stats" style="margin-top:var(--s3)">' +
     '<div class="stat"><div class="muted small">当前角色</div><div class="n">' + (role === 'admin' ? '管理员' : '普通用户') + '</div></div>' +
     '<div class="stat"><div class="muted small">已登记设备</div><div class="n" id="deviceCount">—</div></div>' +
     '<div class="stat"><div class="muted small">服务状态</div><div class="n" id="health">—</div></div></div>' +
-    '</div><aside>' + card('快捷入口', '<div class="stack">' +
+    '</div><aside>' + card('接下来', '<div class="stack">' +
+      '<a class="btn ghost block" href="/account/devices">查看我的设备</a>' +
       '<a class="btn ghost block" href="/account">账户与安全</a>' +
       (role === 'admin' ? '<a class="btn ghost block" href="/admin">用户与设备管理</a>' : '') +
-      '</div>') + '</aside></div></main>' +
-    '', undefined, 'console', 'home')
+      '</div>') +
+      card('需要帮助', '<p class="small muted" style="margin:0">设备连不上时，先确认服务器地址能打开、密钥未被吊销；管理员可以在「用户与设备」里看到每台设备的在线状态与版本。</p>') +
+      '</aside></div></main>', undefined, 'console', 'home')
 }
 
 const accountTabs = (active: 'profile' | 'devices' | 'keys'): string =>

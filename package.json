@@ -1,7 +1,7 @@
 {
   "name": "ds-harness-remote-server",
   "private": true,
-  "version": "1.15.11",
+  "version": "1.15.12",
   "description": "Self-hosted multi-user server for DeepSeek Harness remote access",
   "license": "MIT",
   "type": "module",

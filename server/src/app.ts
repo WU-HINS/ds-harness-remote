@@ -694,7 +694,7 @@ export function createApp(settings: Settings, deps: { pool?: Pool; mailer?: Mail
     if (method === 'GET' && path === '/') {
       const user = await sessionUser(req)
       if (!user) return redirect(res, '/login')
-      return html(res, 200, homePage(user.username, user.role, user.device_username ?? ''))
+      return html(res, 200, homePage(user.username, user.role, user.device_username ?? '', runtime.current.server.publicUrl || origin))
     }
     if (method === 'GET' && (path === '/account' || path === '/account/devices' || path === '/account/keys')) {
       const user = await sessionUser(req)

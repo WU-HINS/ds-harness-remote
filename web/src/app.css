@@ -216,3 +216,11 @@ to{background-position:-200% 0}
   .menu-btn{display:inline-grid}
 }
 @media (prefers-reduced-motion:reduce){.sidebar{transition:none}}
+
+/* On-ramp: numbered steps that end in values the desktop client needs. */
+.steps{margin:0;padding:0;list-style:none;counter-reset:step;display:flex;flex-direction:column;gap:14px}
+.steps>li{counter-increment:step;display:flex;gap:12px}
+.steps>li::before{content:counter(step);flex:none;width:24px;height:24px;border-radius:50%;display:grid;place-items:center;font-size:12.5px;font-weight:600;background:hsl(var(--surface-2));border:1px solid hsl(var(--line))}
+.step-body{flex:1;min-width:0}
+.connect-row{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:10px 12px;border:1px solid hsl(var(--line));border-radius:10px;background:hsl(var(--surface-2))}
+.connect-row .mono{overflow-wrap:anywhere}

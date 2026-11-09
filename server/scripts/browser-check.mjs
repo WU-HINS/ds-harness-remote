@@ -78,6 +78,29 @@ await page.goto(BASE + '/', { waitUntil: 'domcontentloaded' })
 await page.waitForLoadState('load')
 await page.screenshot({ path: '/tmp/bv/shots/02-home.png', fullPage: true })
 
+// The onboarding must actually end in a connected device.
+await page.goto(BASE + '/', { waitUntil: 'domcontentloaded' })
+await page.waitForTimeout(400)
+await page.click('#gen-key')
+await page.waitForTimeout(800)
+const issuedKey = (await page.locator('#connect-key').innerText()).trim()
+const enrolled = await page.evaluate(async (key) => {
+  const me = await (await fetch('/api/v1/auth/me')).json()
+  const res = await fetch('/api/v1/auth/device-login', {
+    method: 'POST', headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ username: me.deviceUsername, deviceKey: key, device: { deviceId: 'onboard-check-1', name: 'Onboarding Mac', role: 'host', platform: 'macos', version: '0.6.4', identityKey: 'onboarding-identity-1' } }),
+  })
+  return res.status
+}, issuedKey)
+await page.reload({ waitUntil: 'domcontentloaded' })
+await page.waitForTimeout(600)
+const count = (await page.locator('#deviceCount').innerText()).trim()
+check('onboarding ends with a visible device', enrolled === 200 && count === '1', enrolled + ' | count=' + count)
+await page.goto(BASE + '/account/devices', { waitUntil: 'domcontentloaded' })
+await page.waitForTimeout(500)
+const deviceText = (await page.locator('#devices').innerText()).replace(/\s+/g, ' ')
+check('device list shows the enrolled host', deviceText.includes('Onboarding Mac') && deviceText.includes('macos'), deviceText.slice(0, 80))
+
 // 3. topbar chrome
 check('topbar visible', await page.locator('header.topbar').isVisible())
 check('nav icons rendered', (await page.locator('.side-link .ico').count()) >= 3 + 1)
