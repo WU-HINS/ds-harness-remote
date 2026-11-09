@@ -71,9 +71,10 @@ export function dshConfirm(message, options = {}) {
   return new Promise((resolve) => {
     const dlg = document.createElement('dialog')
     dlg.className = 'confirm'
-    dlg.setAttribute('aria-labelledby', 'confirm-title')
+    const titleId = 'confirm-title-' + Math.random().toString(36).slice(2, 8)
+    dlg.setAttribute('aria-labelledby', titleId)
     const title = options.title || '确认操作'
-    dlg.innerHTML = '<h2 id="confirm-title" style="border:0;padding:0;margin:0 0 10px">' + dshEsc(title) + '</h2>' +
+    dlg.innerHTML = '<h2 id="' + titleId + '" style="border:0;padding:0;margin:0 0 10px">' + dshEsc(title) + '</h2>' +
       '<p class="muted small" style="margin:0 0 16px">' + dshEsc(message) + '</p>' +
       '<div class="row" style="justify-content:flex-end"><button class="btn ghost" type="button" data-r="0">取消</button>' +
       '<button class="btn ' + (options.danger === false ? '' : 'danger') + '" type="button" data-r="1">' + dshEsc(options.ok || '确认') + '</button></div>'
