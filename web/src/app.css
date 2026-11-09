@@ -176,3 +176,13 @@ to{background-position:-200% 0}
 }
 @media (prefers-reduced-motion:reduce){::view-transition-old(root),::view-transition-new(root),.card,body{animation:none!important;transition:none!important}
 }
+
+/* Operation feedback: floating, dismissible, announced to assistive tech. */
+.toaster{position:fixed;right:18px;bottom:18px;z-index:80;display:flex;flex-direction:column;gap:8px;max-width:min(420px,92vw)}
+.toast-item{display:flex;align-items:flex-start;gap:10px;padding:11px 14px;border-radius:10px;border:1px solid hsl(var(--line));background:hsl(var(--surface));box-shadow:var(--shadow);font-size:13.5px;color:hsl(var(--text));cursor:pointer;animation:toast-in .18s ease both}
+.toast-item .dot{flex:none;width:8px;height:8px;border-radius:50%;margin-top:6px;background:hsl(var(--ok))}
+.toast-item.err .dot{background:hsl(var(--danger))}
+.toast-item .body{flex:1;min-width:0}
+.toast-item .close{border:0;background:transparent;color:hsl(var(--muted));cursor:pointer;font:inherit;line-height:1;padding:0 2px}
+@keyframes toast-in{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
+@media (prefers-reduced-motion:reduce){.toast-item{animation:none}}

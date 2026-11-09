@@ -186,7 +186,7 @@ const accountTabs = (active: 'profile' | 'devices' | 'keys'): string =>
     .map(([id, label, href]) => '<a class="subtab' + (active === id ? ' active' : '') + '" href="' + href + '"' + (active === id ? ' aria-current="page"' : '') + '>' + label + '</a>').join('') +
   '</nav>'
 
-export function accountPage(username: string, email: string, oidcBound: boolean, onlySso: boolean, background?: string, deviceUsername = '', isAdmin = false): string {
+export function accountPage(username: string, email: string, oidcBound: boolean, onlySso: boolean, background?: string, deviceUsername = '', isAdmin = false, oidcError = false): string {
   const passwordCard = onlySso
     ? card('修改密码', '<p class="muted small" style="margin:0">仅 SSO 模式已启用，密码修改不可用。</p>')
     : card('修改密码', '<div class="stack">' +
@@ -207,7 +207,8 @@ export function accountPage(username: string, email: string, oidcBound: boolean,
       '<button class="btn" type="button" id="change-email">确认换绑</button></div>') +
     passwordCard + '</div><aside>' +
     card('安全提示', '<p class="muted small" style="margin:0">设备用「设备用户名 + 设备密钥」登录，与网页密码相互独立。吊销密钥会让对应设备立即下线。</p>') +
-    card('单点登录', '<p class="muted small" style="margin:0 0 12px">' + (oidcBound ? '已绑定 OIDC 身份。' : '尚未绑定 OIDC 身份。') + '</p>' +
+    card('单点登录', (oidcError ? '<div class="alert err" role="alert" style="margin:0 0 12px">单点登录未启用或配置有误，请联系管理员。</div>' : '') +
+      '<p class="muted small" style="margin:0 0 12px">' + (oidcBound ? '已绑定 OIDC 身份。' : '尚未绑定 OIDC 身份。') + '</p>' +
       '<div class="stack"><a class="btn ghost block" href="/api/v1/auth/oidc/start">绑定 / 重新绑定</a>' +
       (onlySso || !oidcBound ? '' : '<button class="btn danger block" type="button" id="unbind">解绑</button>') + '</div>') +
     '</aside></div></main>' ,

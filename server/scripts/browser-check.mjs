@@ -199,6 +199,37 @@ const adminLink = await page.locator('header.topbar a[href="/admin"]').count()
 check('admin keeps the 管理 entry', adminLink === 1, String(adminLink))
 await page.setViewportSize({ width: 1280, height: 900 })
 
+// Leave the console the way a reader does: the button must not land on JSON.
+await page.goto(BASE + '/admin', { waitUntil: 'domcontentloaded' })
+await Promise.all([
+  page.waitForURL('**/login', { timeout: 10000 }),
+  page.click('header.topbar form button[type=submit]'),
+])
+const logoutBody = (await page.content()).slice(0, 60)
+check('logout lands on the login page', page.url().endsWith('/login') && !logoutBody.trimStart().startsWith('{'), logoutBody.slice(0, 40))
+
+// A failed SSO entry point returns to a page, not an error envelope.
+await page.goto(BASE + '/login', { waitUntil: 'domcontentloaded' })
+const oidcNav = await page.goto(BASE + '/api/v1/auth/oidc/start', { waitUntil: 'domcontentloaded' })
+const oidcHtml = await page.content()
+check('oidc entry redirects to a page', !oidcHtml.trimStart().startsWith('{'), (oidcNav && oidcNav.headers()['content-type']) || '')
+
+// No anchor may point straight at the JSON API, except the SSO entry points.
+const apiAnchors = await page.evaluate(async () => {
+  const seen = new Set()
+  const out = []
+  for (const path of ['/', '/login', '/register', '/forgot', '/account', '/account/devices', '/account/keys', '/admin', '/admin/settings']) {
+    const res = await fetch(path, { credentials: 'same-origin' })
+    if (!res.ok) continue
+    const html = await res.text()
+    for (const m of html.matchAll(/<a [^>]*href="(\/api\/[^"]+)"/g)) {
+      if (!seen.has(m[1])) { seen.add(m[1]); out.push(m[1]) }
+    }
+  }
+  return out
+})
+check('no anchor lands on the JSON API', apiAnchors.every((h) => h.startsWith('/api/v1/auth/oidc/start')), JSON.stringify(apiAnchors))
+
 check('theme toggle pins an explicit theme', theme === (prefers ? 'light' : 'dark'), String(theme))
 const stored = await page.evaluate(() => localStorage.getItem('theme'))
 check('theme preference persisted', stored === theme, String(stored))

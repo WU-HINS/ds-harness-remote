@@ -17,7 +17,32 @@ export function dshHint(msg, kind) {
   window.__hintT = setTimeout(() => { box.innerHTML = '' }, 6000)
 }
 
-export const dshToast = dshHint
+export const dshToast = (msg, kind) => toast(msg, kind)
+
+function toast(msg, kind) {
+  let box = $('toaster')
+  if (!box) {
+    box = document.createElement('div')
+    box.id = 'toaster'
+    box.className = 'toaster'
+    box.setAttribute('role', 'status')
+    box.setAttribute('aria-live', 'polite')
+    document.body.appendChild(box)
+  }
+  const item = document.createElement('div')
+  item.className = 'toast-item' + (kind === 'err' ? ' err' : '')
+  if (kind === 'err') item.setAttribute('role', 'alert')
+  const dot = document.createElement('span'); dot.className = 'dot'
+  const body = document.createElement('span'); body.className = 'body'; body.textContent = msg
+  const close = document.createElement('button')
+  close.className = 'close'; close.type = 'button'; close.setAttribute('aria-label', '关闭提示'); close.textContent = '×'
+  item.append(dot, body, close)
+  box.appendChild(item)
+  const dismiss = () => item.remove()
+  close.onclick = (e) => { e.stopPropagation(); dismiss() }
+  item.onclick = dismiss
+  setTimeout(dismiss, kind === 'err' ? 7000 : 4000)
+}
 
 const ERRORS = {
   AUTH_INVALID: '邮箱或密码不正确', EMAIL_UNVERIFIED: '邮箱尚未验证', SSO_ONLY: '已启用仅 SSO，请用身份提供方登录',

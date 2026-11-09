@@ -114,6 +114,7 @@ function loginErrorText(code: string | null): string | undefined {
     CODE_INVALID: '验证码不正确或已过期',
     INVALID_EMAIL: '邮箱格式不正确',
     SETUP_KEY_INVALID: '初始化密钥无效',
+    'oidc-unavailable': '本站未启用 SSO 登录',
     SETUP_CLOSED: '初始化已完成',
   } as Record<string, string>)[code] ?? code
 }
@@ -402,6 +403,7 @@ export function createApp(settings: Settings, deps: { pool?: Pool; mailer?: Mail
       if (method !== 'POST') throw new ApiError('METHOD_NOT_ALLOWED', 405)
       await store.deleteSession(readCookie(req, 'dsh_session'))
       res.setHeader('Set-Cookie', cookie('dsh_session', '', 0, secure))
+      if (isForm(req)) return redirect(res, '/login')
       return json(res, 200, { status: 'ok' })
     }
     if (method === 'GET' && path === '/api/v1/auth/me') {
@@ -443,6 +445,7 @@ export function createApp(settings: Settings, deps: { pool?: Pool; mailer?: Mail
       await store.audit('account.registered', email, user.id)
       const session = await store.createSession(user.id, runtime.limits.sessionTtlMs)
       res.setHeader('Set-Cookie', cookie('dsh_session', session.token, runtime.limits.sessionTtlMs, secure))
+      if (isForm(req)) return redirect(res, '/')
       return json(res, 201, { account: user.username, email: user.email, token: session.token, expiresAt: session.expiresAt, deviceKey })
     }
     if (method === 'POST' && path === '/api/v1/auth/password/reset/start') {
@@ -473,6 +476,7 @@ export function createApp(settings: Settings, deps: { pool?: Pool; mailer?: Mail
       }
       await store.setPassword(user.id, password, { revokeAllDevices: true })
       await store.audit('password.reset', email, user.id)
+      if (isForm(req)) return redirect(res, '/login?reset=1')
       return json(res, 200, { status: 'reset' })
     }
 
@@ -540,7 +544,12 @@ export function createApp(settings: Settings, deps: { pool?: Pool; mailer?: Mail
 
     // ── OIDC ────────────────────────────────────────────────────────────────
     const oidc = runtime.oidcClient(origin)
-    if (oidc && method === 'GET' && path === '/api/v1/auth/oidc/start') {
+    if (method === 'GET' && path === '/api/v1/auth/oidc/start') {
+      // A browser navigation, never JSON: send the reader back to a page.
+      if (!oidc) {
+        const current = await sessionUser(req)
+        return redirect(res, current ? '/account?oidc=error' : '/login?error=oidc-unavailable')
+      }
       const { url: target, state } = await oidc.authorizationUrl()
       res.setHeader('Set-Cookie', 'dsh_oidc_state=' + state + '; Path=/api/v1/auth/oidc; HttpOnly; SameSite=Lax; Max-Age=600' + (secure ? '; Secure' : ''))
       return redirect(res, target)
@@ -672,7 +681,7 @@ export function createApp(settings: Settings, deps: { pool?: Pool; mailer?: Mail
       const admin = user.role === 'admin'
       if (path === '/account/devices') return html(res, 200, accountDevicesPage(user.username, bg, device, admin))
       if (path === '/account/keys') return html(res, 200, accountKeysPage(user.username, bg, device, admin))
-      return html(res, 200, accountPage(user.username, user.email ?? '', Boolean(user.oidc_subject), runtime.current.oidc.onlySso, bg, device, admin))
+      return html(res, 200, accountPage(user.username, user.email ?? '', Boolean(user.oidc_subject), runtime.current.oidc.onlySso, bg, device, admin, url.searchParams.get('oidc') === 'error'))
     }
     if (method === 'GET' && (path === '/admin' || path === '/admin/settings')) {
       const user = await sessionUser(req)
