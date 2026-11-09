@@ -5,13 +5,16 @@ RUN corepack enable && corepack prepare pnpm@9.15.4 --activate
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml tsconfig.base.json ./
 COPY packages/protocol/package.json packages/protocol/package.json
 COPY server/package.json server/package.json
-RUN pnpm --filter @dsh-remote/server... install --frozen-lockfile --ignore-scripts
+COPY web/package.json web/package.json
+RUN pnpm --filter @dsh-remote/server... --filter @dsh-remote/web install --frozen-lockfile --ignore-scripts
 
 COPY packages/protocol/src packages/protocol/src
 COPY packages/protocol/tsconfig.json packages/protocol/tsconfig.json
 COPY server/src server/src
 COPY server/tsconfig.json server/tsconfig.json
+COPY web web
 RUN pnpm --filter @dsh-remote/protocol build \
+    && pnpm --filter @dsh-remote/web build \
     && pnpm --filter @dsh-remote/server build \
     && pnpm --filter @dsh-remote/server deploy --prod /out
 

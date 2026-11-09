@@ -106,7 +106,11 @@ pnpm test:pg        # same suite against real PostgreSQL (needs DATABASE_URL)
 > CI sets it explicitly in the `server-postgres` job.
 ```
 
-Layout: `server/src` (HTTP, gateway, store, auth), `server/tests` (smoke suites), `packages/protocol`.
+Layout: `server/src` (HTTP, gateway, store, auth), `web/src` (browser CSS and JS), `server/tests` (smoke suites),
+`packages/protocol`.
+
+Frontend and backend are separate workspaces. `pnpm build` bundles `web/src` into hashed assets and merges
+them into `server/dist/web`; the server only serves those files (`/assets/*`) and never inlines scripts or CSS.
 
 ## Documentation
 

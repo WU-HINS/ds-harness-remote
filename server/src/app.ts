@@ -1,4 +1,5 @@
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http'
+import { readAsset, webAssetsMissing } from './assets.js'
 import { isIP } from 'node:net'
 import { randomUUID } from 'node:crypto'
 import { Pool } from 'pg'
@@ -263,6 +264,12 @@ export function createApp(settings: Settings, deps: { pool?: Pool; mailer?: Mail
     }
     if (!isCallback && req.headers['sec-fetch-site'] === 'cross-site') throw new ApiError('AUTH_INVALID', 403)
 
+    const asset = path.startsWith('/assets/') ? readAsset(path.slice('/assets/'.length)) : undefined
+    if (asset) {
+      res.writeHead(200, { 'content-type': asset.type, 'cache-control': 'public, max-age=31536000, immutable' })
+      res.end(asset.body)
+      return
+    }
     if (method === 'GET' && path === '/favicon.ico') { res.writeHead(204, { 'cache-control': 'public, max-age=604800' }); res.end(); return }
     if (method === 'GET' && (path === '/healthz' || path === '/health')) return json(res, 200, { status: 'ok' })
     const setupExempt = path === '/setup' || path === '/api/v1/setup' || path === '/ready'
