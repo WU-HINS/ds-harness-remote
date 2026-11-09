@@ -70,7 +70,9 @@ check('cross-site state change is refused', crossPost.status === 403, String(cro
 
 const badLimits = await req('/api/v1/admin/settings', { method: 'PUT', headers: { 'content-type': 'application/json', cookie: adminCookie }, body: JSON.stringify({ limits: { userConnectionLimit: -5 } }) })
 const afterBad = await req('/api/v1/admin/settings', { headers: { cookie: adminCookie } })
-check('invalid limits rejected', badLimits.status === 400 && afterBad.body.limits.userConnectionLimit === 16, badLimits.status + ' | ' + afterBad.body.limits.userConnectionLimit)
+const storedLimits = await pool.query("SELECT value FROM server_settings WHERE key = 'runtime_config'")
+const storedConn = storedLimits.rows[0]?.value?.limits?.userConnectionLimit
+check('invalid limits rejected', badLimits.status === 400 && afterBad.body.limits.userConnectionLimit === 16 && storedConn !== -5, badLimits.status + ' | api=' + afterBad.body.limits.userConnectionLimit + ' db=' + storedConn)
 
 check('csp blocks inline scripts', /script-src 'self' 'sha256-[A-Za-z0-9+/=]+'/.test(csp) && !/script-src[^;]*unsafe-inline/.test(csp), csp.slice(0, 90))
 const loginHtml = String(loginPageRes.body)

@@ -84,7 +84,7 @@ export function init() {
     const a = b.getAttribute('data-a')
     if (a === 'toggle') {
       dshApi('/api/v1/admin/users/' + encodeURIComponent(id), { method: 'PATCH', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ toggle: true }) })
-        .then((r) => { dshToast(r.ok ? '状态已更新' : dshFail(r.body, r.status), r.ok ? 'ok' : 'err'); loadUsers(); loadAudit() })
+        .then(async (r) => { await Promise.all([loadUsers(), loadAudit()]); dshToast(r.ok ? '状态已更新' : dshFail(r.body, r.status), r.ok ? 'ok' : 'err') })
     } else if (a === 'del') {
       if (!(await dshConfirm('删除用户 ' + b.getAttribute('data-name') + '？该用户的设备与会话会立即失效，且不可恢复。', { title: '删除用户' }))) return
       dshDel('/api/v1/admin/users/' + encodeURIComponent(id)).then((r) => { dshToast(r.ok ? '已删除' : dshFail(r.body, r.status), r.ok ? 'ok' : 'err'); loadUsers() })

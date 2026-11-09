@@ -46,8 +46,20 @@ export function init() {
   }).then((r) => { if (r.ok) { $('smtp-pass').value = ''; dshToast('已保存', 'ok') } else dshToast(dshFail(r.body, r.status), 'err') })
   $('test-smtp').onclick = () => dshPost('/api/v1/admin/smtp/test', { to: $('smtp-test-to').value.trim() })
     .then((r) => dshToast(r.ok ? '测试邮件已发送' : dshFail(r.body, r.status), r.ok ? 'ok' : 'err'))
-  $('save-limits').onclick = () => dshPut('/api/v1/admin/settings', {
-    limits: { sessionTtlMs: +$('session-ttl').value, userConnectionLimit: +$('conn-limit').value, userRatePerMinute: +$('user-rate').value, anonRatePerMinute: +$('anon-rate').value },
-    ice: { stunUrls: $('stun').value, turnUrls: $('turn').value, turnUsername: $('turn-user').value, turnPassword: $('turn-pass').value },
-  }).then((r) => { if (r.ok) { $('turn-pass').value = ''; dshToast('已保存', 'ok') } else dshToast(dshFail(r.body, r.status), 'err') })
+  $('save-limits').onclick = async () => {
+    const fields = { 'session-ttl': '会话有效期', 'conn-limit': '并发连接数', 'user-rate': '用户每分钟', 'anon-rate': '匿名每分钟' }
+    Object.keys(fields).forEach((id) => $(id).removeAttribute('aria-invalid'))
+    const r = await dshPut('/api/v1/admin/settings', {
+      limits: { sessionTtlMs: +$('session-ttl').value, userConnectionLimit: +$('conn-limit').value, userRatePerMinute: +$('user-rate').value, anonRatePerMinute: +$('anon-rate').value },
+      ice: { stunUrls: $('stun').value, turnUrls: $('turn').value, turnUsername: $('turn-user').value, turnPassword: $('turn-pass').value },
+    })
+    if (r.ok) { $('turn-pass').value = ''; dshToast('已保存', 'ok'); return }
+    const message = dshFail(r.body, r.status)
+    // Point at the field the server complained about, instead of a bare toast.
+    for (const [id, label] of Object.entries(fields)) {
+      if (message.includes(label)) { $(id).setAttribute('aria-invalid', 'true'); $(id).focus(); break }
+    }
+    dshToast(message, 'err')
+  }
+
 }

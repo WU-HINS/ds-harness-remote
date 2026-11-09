@@ -187,3 +187,5 @@ to{background-position:-200% 0}
 .toast-item .close{border:0;background:transparent;color:hsl(var(--muted));cursor:pointer;font:inherit;line-height:1;min-width:24px;min-height:24px;display:grid;place-items:center;border-radius:6px}
 @keyframes toast-in{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
 @media (prefers-reduced-motion:reduce){.toast-item{animation:none}}
+
+.toast-item.ok .dot{background:hsl(var(--ok))}

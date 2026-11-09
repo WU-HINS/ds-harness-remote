@@ -115,7 +115,7 @@ export function loginPage(oidcEnabled: boolean, error?: string, background?: str
     '<div id="login-error" role="alert">' + (error ? '<div class="alert err" style="margin-top:14px">' + esc(error) + '</div>' : '') + '</div></section></div></main>', background, 'public', 'login')
 }
 
-export function registerPage(onlySso: boolean, background?: string): string {
+export function registerPage(onlySso: boolean, background?: string, error?: string): string {
   if (onlySso) {
     return shell('注册', '<main class="hero" id="main"><section class="panel" style="max-width:460px;text-align:center">' +
       '<h1 style="font-size:22px">注册已关闭</h1><p class="muted">本站已启用仅 SSO，账号由身份提供方创建。</p>' +
@@ -134,7 +134,7 @@ export function registerPage(onlySso: boolean, background?: string): string {
     '', background, 'public', 'register')
 }
 
-export function forgotPage(onlySso: boolean, background?: string): string {
+export function forgotPage(onlySso: boolean, background?: string, error?: string): string {
   if (onlySso) {
     return shell('找回密码', '<main class="hero" id="main"><section class="panel" style="max-width:460px;text-align:center">' +
       '<h1 style="font-size:22px">找回密码已禁用</h1><p class="muted">仅 SSO 模式下请通过身份提供方登录。</p>' +
@@ -300,10 +300,10 @@ export function adminSettingsPage(username: string, background?: string, deviceU
     '<div><label class="label" for="allowed-domains">允许邮箱域</label><input class="input" id="allowed-domains" placeholder="example.com"></div>' +
     '<div><button class="btn" type="button" id="save-oidc">保存 OIDC</button></div></div></section>' +
     '<section class="card" id="limits"><h2>限额与 ICE</h2><div class="stack">' +
-    '<div class="grid-2"><div><label class="label" for="session-ttl">会话 TTL(ms)</label><input class="input" id="session-ttl" type="number"></div>' +
-    '<div><label class="label" for="conn-limit">并发连接</label><input class="input" id="conn-limit" type="number"></div>' +
-    '<div><label class="label" for="user-rate">用户/分钟</label><input class="input" id="user-rate" type="number"></div>' +
-    '<div><label class="label" for="anon-rate">匿名/分钟</label><input class="input" id="anon-rate" type="number"></div></div>' +
+    '<div class="grid-2"><div><label class="label" for="session-ttl">会话 TTL(ms)</label><input class="input" id="session-ttl" type="number" min="60000" max="2592000000" step="1000"></div>' +
+    '<div><label class="label" for="conn-limit">并发连接</label><input class="input" id="conn-limit" type="number" min="1" max="1024" step="1"></div>' +
+    '<div><label class="label" for="user-rate">用户/分钟</label><input class="input" id="user-rate" type="number" min="1" max="100000" step="1"></div>' +
+    '<div><label class="label" for="anon-rate">匿名/分钟</label><input class="input" id="anon-rate" type="number" min="1" max="100000" step="1"></div></div>' +
     '<div><label class="label" for="stun">STUN</label><input class="input" id="stun"></div>' +
     '<div><label class="label" for="turn">TURN</label><input class="input" id="turn"></div>' +
     '<div class="grid-2"><div><label class="label" for="turn-user">TURN 用户名</label><input class="input" id="turn-user"></div><div><label class="label" for="turn-pass">TURN 密码</label><input class="input" id="turn-pass" type="password" autocomplete="new-password"></div></div>' +

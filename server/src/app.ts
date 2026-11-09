@@ -122,7 +122,7 @@ function loginErrorText(code: string | null): string | undefined {
     'oidc-no-account': '该邮箱尚未注册，请联系管理员开通',
     INVALID_SETTINGS: '设置有误，请检查填写内容',
     SETUP_CLOSED: '初始化已完成',
-  } as Record<string, string>)[code] ?? code
+  } as Record<string, string>)[code] ?? '操作未能完成，请重试'
 }
 
 function isForm(req: IncomingMessage): boolean {
@@ -343,8 +343,8 @@ export function createApp(settings: Settings, deps: { pool?: Pool; mailer?: Mail
       if (await sessionUser(req)) return redirect(res, '/')
       return html(res, 200, loginPage(Boolean(runtime.oidcClient(origin)), loginErrorText(url.searchParams.get('error')), runtime.current.ui.backgroundUrl))
     }
-    if (method === 'GET' && path === '/register') return html(res, 200, registerPage(runtime.current.oidc.onlySso, runtime.current.ui.backgroundUrl))
-    if (method === 'GET' && path === '/forgot') return html(res, 200, forgotPage(runtime.current.oidc.onlySso, runtime.current.ui.backgroundUrl))
+    if (method === 'GET' && path === '/register') return html(res, 200, registerPage(runtime.current.oidc.onlySso, runtime.current.ui.backgroundUrl, loginErrorText(url.searchParams.get('error'))))
+    if (method === 'GET' && path === '/forgot') return html(res, 200, forgotPage(runtime.current.oidc.onlySso, runtime.current.ui.backgroundUrl, loginErrorText(url.searchParams.get('error'))))
     if (method === 'POST' && path === '/api/v1/auth/login') {
       if (!ctx.anonLimiter.take('login:' + clientAddress(req, trustedProxies))) throw new ApiError('RATE_LIMITED', 429)
       const input = await body(req)
@@ -1027,9 +1027,12 @@ export function createApp(settings: Settings, deps: { pool?: Pool; mailer?: Mail
         if (target) return redirect(res, target + encodeURIComponent(code))
       }
       if (req.headers['sec-fetch-dest'] === 'document') {
+        const heading = code === 'METHOD_NOT_FOUND' ? '页面不存在' : code === 'AUTH_INVALID' ? '请重新登录' : '出错了'
         res.writeHead(status, { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'no-store' })
-        res.end('<!doctype html><meta charset="utf-8"><title>出错了</title><main style="font:16px system-ui;max-width:36rem;margin:12vh auto;padding:0 1.2rem">' +
-          '<h1 style="font-size:20px">' + (code === 'METHOD_NOT_FOUND' ? '页面不存在' : code === 'AUTH_INVALID' ? '请重新登录' : '出错了') + '</h1><p>' + (error instanceof ApiError && error.detail ? error.detail : '请求未能完成') + '</p>' +
+        res.end('<!doctype html><html lang="zh-CN"><meta charset="utf-8"><title>' + heading + ' · DSH Remote</title>' +
+          '<style>body{margin:0;font:16px/1.6 system-ui,sans-serif;background:#0b0f16;color:#e7eef8;display:grid;place-items:center;min-height:100vh}' +
+          'main{max-width:34rem;padding:0 1.4rem}main a{color:#8fb0ff}</style>' +
+          '<main><h1 style="font-size:22px;margin:0 0 8px">' + heading + '</h1><p style="color:#8b98ab;margin:0 0 16px">' + (error instanceof ApiError && error.detail ? error.detail : '请求未能完成') + '</p>' +
           '<p><a href="/">返回首页</a> · <a href="/login">重新登录</a></p></main>')
         return
       }

@@ -30,7 +30,7 @@ function toast(msg, kind) {
     document.body.appendChild(box)
   }
   const item = document.createElement('div')
-  item.className = 'toast-item' + (kind === 'err' ? ' err' : '')
+  item.className = 'toast-item ' + (kind === 'err' ? 'err' : 'ok')
   if (kind === 'err') item.setAttribute('role', 'alert')
   const dot = document.createElement('span'); dot.className = 'dot'
   const body = document.createElement('span'); body.className = 'body'; body.textContent = msg
