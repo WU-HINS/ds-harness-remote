@@ -130,6 +130,23 @@ export function initNavigation() {
   })
 }
 
+export function initShell() {
+  const shell = document.querySelector('.shell')
+  if (!shell) return
+  const toggle = document.getElementById('side-toggle')
+  const menu = document.getElementById('menu-btn')
+  try { if (localStorage.getItem('sidebar') === 'collapsed') shell.classList.add('collapsed') } catch {}
+  if (toggle) toggle.addEventListener('click', () => {
+    const collapsed = shell.classList.toggle('collapsed')
+    try { localStorage.setItem('sidebar', collapsed ? 'collapsed' : 'open') } catch {}
+    toggle.setAttribute('aria-expanded', String(!collapsed))
+  })
+  if (menu) menu.addEventListener('click', () => {
+    const open = shell.classList.toggle('nav-open')
+    menu.setAttribute('aria-expanded', String(open))
+  })
+}
+
 export function initChrome() {
   document.addEventListener('click', (e) => {
     const a = e.target.closest && e.target.closest('a[data-confirm]')

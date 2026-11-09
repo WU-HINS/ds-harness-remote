@@ -147,7 +147,7 @@ to{transform:none}
 }
 dialog{border:1px solid hsl(var(--line));border-radius:12px;background:hsl(var(--surface));color:hsl(var(--text));padding:var(--u-7);max-width:min(560px,92vw);box-shadow:var(--shadow)}
 dialog::backdrop{background:rgb(0 0 0 / .55)}
-.subnav{max-width:1252px;margin:0 auto;padding:var(--u-5) clamp(var(--u-6),3vw,var(--u-9)) 0;display:flex;gap:var(--u-2)}
+.subnav{display:flex;gap:var(--u-2);padding:0 0 var(--u-4)}
 .subtab{padding:7px 14px;border-radius:999px;font-size:13.5px;color:hsl(var(--muted));border:1px solid transparent}
 .subtab:hover{color:hsl(var(--text));background:hsl(var(--surface-2));text-decoration:none}
 .subtab.active{color:hsl(var(--text));background:hsl(var(--surface));border-color:hsl(var(--line));font-weight:600}
@@ -189,3 +189,30 @@ to{background-position:-200% 0}
 @media (prefers-reduced-motion:reduce){.toast-item{animation:none}}
 
 .toast-item.ok .dot{background:hsl(var(--ok))}
+
+/* Console shell: fixed sidebar (HiDNS style) with a collapsible rail. */
+.shell{display:grid;grid-template-columns:232px minmax(0,1fr);min-height:100dvh}
+.shell.collapsed{grid-template-columns:72px minmax(0,1fr)}
+.sidebar{position:sticky;top:0;height:100dvh;display:flex;flex-direction:column;gap:10px;padding:14px 10px;background:hsl(var(--surface));border-right:1px solid hsl(var(--line));overflow:hidden}
+.side-head{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:0 4px 6px}
+.side-head .brand{display:flex;align-items:center;gap:10px;font-weight:700;letter-spacing:-.02em;white-space:nowrap}
+.side-toggle{width:28px;height:28px;flex:none}
+.side-nav{display:flex;flex-direction:column;gap:2px;overflow-y:auto;flex:1}
+.side-group{padding:10px 10px 4px;font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:hsl(var(--muted))}
+.side-link{display:flex;align-items:center;gap:10px;padding:9px 10px;border-radius:8px;color:hsl(var(--text));font-size:13.5px;white-space:nowrap}
+.side-link:hover{background:hsl(var(--surface-2));text-decoration:none}
+.side-link.active{background:hsl(var(--surface-2));font-weight:600;box-shadow:inset 2px 0 0 hsl(var(--ring))}
+.side-link .ico{flex:none;opacity:.85}
+.shell.collapsed .side-link .lbl,.shell.collapsed .side-group,.shell.collapsed .wordmark{display:none}
+.shell.collapsed .side-head{justify-content:center}
+.shell.collapsed .side-link{justify-content:center;padding:10px 0}
+.shell-main{min-width:0;display:flex;flex-direction:column}
+.shell-main .topbar{position:sticky;top:0}
+.menu-btn{display:none}
+@media (max-width:900px){
+  .shell{grid-template-columns:1fr}
+  .sidebar{position:fixed;z-index:40;width:232px;transform:translateX(-100%);transition:transform .2s ease;box-shadow:var(--shadow)}
+  .shell.nav-open .sidebar{transform:none}
+  .menu-btn{display:inline-grid}
+}
+@media (prefers-reduced-motion:reduce){.sidebar{transition:none}}

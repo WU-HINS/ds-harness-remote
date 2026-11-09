@@ -80,7 +80,7 @@ await page.screenshot({ path: '/tmp/bv/shots/02-home.png', fullPage: true })
 
 // 3. topbar chrome
 check('topbar visible', await page.locator('header.topbar').isVisible())
-check('nav icons rendered', await page.locator('.navlink .ico').count() >= 3)
+check('nav icons rendered', (await page.locator('.side-link .ico').count()) >= 3 + 1)
 const devName = await page.evaluate(() => {
   const el = document.querySelector('.who .dev-name')
   if (!el) return null
@@ -212,7 +212,7 @@ await page.goto(BASE + '/', { waitUntil: 'domcontentloaded' })
 await page.waitForTimeout(200)
 const adminOverflow = await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth)
 check('admin topbar fits at 360px', adminOverflow <= 1, 'overflow=' + adminOverflow)
-const adminLink = await page.locator('header.topbar a[href="/admin"]').count()
+const adminLink = await page.locator('.sidebar a[href="/admin"]').count()
 check('admin keeps the 管理 entry', adminLink === 1, String(adminLink))
 await page.setViewportSize({ width: 1280, height: 900 })
 

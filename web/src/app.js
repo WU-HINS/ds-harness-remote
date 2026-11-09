@@ -1,4 +1,4 @@
-import { initTheme, initNavigation, initChrome, initPalette } from './shared.js'
+import { initTheme, initNavigation, initChrome, initPalette, initShell } from './shared.js'
 import * as home from './pages/home.js'
 import * as account from './pages/account.js'
 import * as devices from './pages/devices.js'
@@ -18,6 +18,7 @@ initTheme()
 document.addEventListener('DOMContentLoaded', () => {
   initNavigation()
   initChrome()
+  initShell()
   initPalette()
   const page = document.body.dataset.page
   if (pages[page]) pages[page].init()

@@ -29,13 +29,18 @@ const shell = (title: string, body: string, background?: string, surface: 'publi
   '<script>' + THEME_BOOT + '</script>' +
   '<link rel="stylesheet" href="/assets/' + esc(webAssets?.css ?? '') + '">' +
   '<script src="/assets/' + esc(webAssets?.js ?? '') + '" defer></script>' +
-  '</head><body data-page="' + attr(page) + '"' + bgStyle(background) + '><div id="hint" class="hintbar" role="status" aria-live="polite"></div>' + body + '</body></html>'
+  '</head><body data-page="' + attr(page) + '"' + bgStyle(background) + '><div id="hint" class="hintbar" role="status" aria-live="polite"></div>' + body + (surface === 'console' ? cmdPalette + '</div></div>' : '') + '</body></html>'
 
 const ICONS: Record<string, string> = {
   home: '<path d="M3 10.7 12 3l9 7.7"/><path d="M5.5 9.5V20a1 1 0 0 0 1 1H10v-6h4v6h3.5a1 1 0 0 0 1-1V9.5"/>',
   user: '<circle cx="12" cy="8" r="3.6"/><path d="M4.5 20.5c1.6-3.4 4.2-5 7.5-5s5.9 1.6 7.5 5"/>',
   shield: '<path d="M12 3l7 2.8V12c0 4.4-3 7.4-7 9-4-1.6-7-4.6-7-9V5.8z"/>',
   search: '<circle cx="11" cy="11" r="6.5"/><path d="m16 16 4 4"/>',
+  device: '<rect x="3" y="4" width="18" height="12" rx="2"/><path d="M8 20h8"/>',
+  key: '<circle cx="8" cy="15" r="3.5"/><path d="m10.5 12.5 8-8"/><path d="m16 5 3 3"/>',
+  chevron: '<path d="m14 6-6 6 6 6"/>',
+  bars: '<path d="M4 7h16M4 12h16M4 17h16"/>',
+  gear: '<circle cx="12" cy="12" r="3"/><path d="M12 3v2m0 14v2M3 12h2m14 0h2M5.6 5.6l1.4 1.4m10 10 1.4 1.4M18.4 5.6 17 7M7 17l-1.4 1.4"/>',
 }
 
 const icon = (name: string): string =>
@@ -50,21 +55,38 @@ const cmdPalette = '<dialog id="cmdk" class="palette" aria-label="命令面板">
   '<div id="cmdk-list" class="cmdk-list" role="listbox" aria-label="结果"></div></dialog>' +
   ''
 
-const topbar = (user: string, active: string, deviceUsername?: string, isAdmin = false): string =>
-  '<a class="skip" href="#main">跳到主内容</a><header class="topbar">' +
-  '<a class="brand" href="/" aria-label="DSH Remote 首页"><span class="dot"></span><span class="wordmark">DSH <em>Remote</em></span></a>' +
-  '<nav class="nav" aria-label="主导航">' +
-  navlink('/', '概览', active === 'home', 'home') +
-  navlink('/account', '账户', active === 'account', 'user') +
-  (isAdmin ? navlink('/admin', '管理', active === 'admin', 'shield') : '') +
-  '</nav><div class="spacer"></div>' +
+const sideLink = (href: string, label: string, active: boolean, iconName: string): string =>
+  '<a class="side-link' + (active ? ' active' : '') + '" href="' + href + '"' + (active ? ' aria-current="page"' : '') + ' title="' + attr(label) + '">' +
+  icon(iconName) + '<span class="lbl">' + label + '</span></a>'
+
+/**
+ * Console shell: a HiDNS-style fixed sidebar with grouped navigation, plus the
+ * compact bar that keeps identity, theme, palette and sign-out in reach.
+ * The caller supplies the page content; shell() closes the wrappers.
+ */
+const consoleShell = (user: string, active: string, deviceUsername?: string, isAdmin = false): string =>
+  '<a class="skip" href="#main">跳到主内容</a><div class="shell">' +
+  '<aside class="sidebar" id="sidebar" aria-label="侧边导航">' +
+  '<div class="side-head"><a class="brand" href="/" aria-label="DSH Remote 首页"><span class="dot"></span><span class="wordmark">DSH <em>Remote</em></span></a>' +
+  '<button class="icon-btn side-toggle" type="button" id="side-toggle" aria-label="收起侧边栏" aria-expanded="true">' + icon('chevron') + '</button></div>' +
+  '<nav class="side-nav">' +
+  '<div class="side-group">工作区</div>' +
+  sideLink('/', '概览', active === 'home', 'home') +
+  sideLink('/account', '我的账户', active === 'account', 'user') +
+  sideLink('/account/devices', '我的设备', active === 'devices', 'device') +
+  sideLink('/account/keys', '设备密钥', active === 'keys', 'key') +
+  (isAdmin ? '<div class="side-group">管理</div>' + sideLink('/admin', '用户与设备', active === 'admin', 'shield') + sideLink('/admin/settings', '设置', active === 'admin-settings', 'gear') : '') +
+  '</nav></aside>' +
+  '<div class="shell-main"><header class="topbar">' +
+  '<button class="icon-btn menu-btn" type="button" id="menu-btn" aria-label="打开导航" aria-expanded="false">' + icon('bars') + '</button>' +
+  '<div class="spacer"></div>' +
   '<div class="user"><span class="avatar" aria-hidden="true">' + esc(user.slice(0, 1)) + '</span>' +
   '<span class="who" title="' + attr(deviceUsername ? user + ' · ' + deviceUsername : user) + '">' +
   '<span class="acct">' + esc(user) + '</span>' +
   (deviceUsername ? '<span class="dev-name mono">' + esc(deviceUsername) + '</span>' : '') + '</span></div>' +
   themeButton +
   '<button class="icon-btn cmdk-btn" type="button" id="cmdk-open" aria-label="打开命令面板" aria-keyshortcuts="Meta+K Control+K" title="命令面板 ⌘K">' + icon('search') + '</button>' +
-  '<form method="post" action="/api/v1/auth/logout" style="margin:0"><button class="btn ghost sm" type="submit">退出</button></form></header>' + cmdPalette
+  '<form method="post" action="/api/v1/auth/logout" style="margin:0"><button class="btn ghost sm" type="submit">退出</button></form></header>'
 
 const card = (title: string, body: string, extra = ''): string =>
   '<section class="card"><h2>' + title + (extra ? '<span class="muted small">' + extra + '</span>' : '') + '</h2>' + body + '</section>'
@@ -165,7 +187,7 @@ export function bindPage(email: string, onlySso: boolean, background?: string): 
 }
 
 export function homePage(username: string, role: string, deviceUsername = ''): string {
-  return shell('概览', topbar(username, 'home', deviceUsername, role === 'admin') + '<main class="wrap" id="main">' +
+  return shell('概览', consoleShell(username, 'home', deviceUsername, role === 'admin') + '<main class="wrap" id="main">' +
     '<div class="grid-phi"><div>' +
     '<section class="card"><h1 style="font-size:clamp(20px,4.6vw,26px)">你好，' + esc(username) + '</h1>' +
     '<p class="muted" style="margin:10px 0 0">从这里管理账户、设备与这台服务器。业务流量端到端加密，服务器只转发密文。</p></section>' +
@@ -193,7 +215,7 @@ export function accountPage(username: string, email: string, oidcBound: boolean,
         '<div><label class="label" for="cur-pass">当前密码</label><input class="input" id="cur-pass" type="password" autocomplete="current-password"></div>' +
         '<div><label class="label" for="new-pass">新密码</label><input class="input" id="new-pass" type="password" minlength="12" placeholder="至少 12 位" autocomplete="new-password"></div>' +
         '<button class="btn" type="button" id="change-pw">保存</button></div>')
-  return shell('我的账户', topbar(username, 'account', deviceUsername, isAdmin) + accountTabs('profile') + '<main class="wrap" id="main"><h1 class="sr-only">我的账户</h1><div class="grid-phi"><div>' +
+  return shell('我的账户', consoleShell(username, 'account', deviceUsername, isAdmin) + '<main class="wrap" id="main"><h1 class="sr-only">我的账户</h1>' + accountTabs('profile') + '<div class="grid-phi"><div>' +
     card('账户', '<div class="grid-2">' +
       '<div><div class="label">登录邮箱</div><div class="mono">' + esc(email || '未设置') + '</div></div>' +
       '<div><div class="label">邮箱状态</div><div><span class="badge">' + (email ? '已验证' : '未设置') + '</span></div></div>' +
@@ -216,7 +238,7 @@ export function accountPage(username: string, email: string, oidcBound: boolean,
 }
 
 export function accountDevicesPage(username: string, background?: string, deviceUsername = '', isAdmin = false): string {
-  return shell('我的设备', topbar(username, 'account', deviceUsername, isAdmin) + accountTabs('devices') + '<main class="wrap" id="main"><h1 class="sr-only">我的设备</h1>' +
+  return shell('我的设备', consoleShell(username, 'devices', deviceUsername, isAdmin) + '<main class="wrap" id="main"><h1 class="sr-only">我的设备</h1>' + accountTabs('devices') +
     card('我的设备', '<div class="toolbar">' +
       '<input class="input" id="q" type="search" placeholder="搜索设备名或系统" aria-label="搜索设备">' +
       '<div class="chips" role="group" aria-label="按角色筛选"><button class="chip" data-role="all" aria-pressed="true">全部</button><button class="chip" data-role="host" aria-pressed="false">主机</button><button class="chip" data-role="client" aria-pressed="false">客户端</button></div>' +
@@ -228,7 +250,7 @@ export function accountDevicesPage(username: string, background?: string, device
 }
 
 export function accountKeysPage(username: string, background?: string, deviceUsername = '', isAdmin = false): string {
-  return shell('设备密钥', topbar(username, 'account', deviceUsername, isAdmin) + accountTabs('keys') + '<main class="wrap" id="main"><h1 class="sr-only">设备密钥</h1>' +
+  return shell('设备密钥', consoleShell(username, 'keys', deviceUsername, isAdmin) + '<main class="wrap" id="main"><h1 class="sr-only">设备密钥</h1>' + accountTabs('keys') +
     card('设备密钥', '<div class="toolbar"><input class="input" id="q" type="search" placeholder="搜索标签" aria-label="搜索密钥">' +
       '<div class="chips" role="group" aria-label="按状态筛选"><button class="chip" data-state="all" aria-pressed="true">全部</button><button class="chip" data-state="active" aria-pressed="false">正常</button><button class="chip" data-state="revoked" aria-pressed="false">已吊销</button></div></div>' +
       '<div class="table-scroll sticky-actions" tabindex="0" role="region" aria-label="设备密钥列表"><table class="table"><thead><tr><th scope="col">标签</th><th scope="col">设备数</th><th scope="col">状态</th><th scope="col">密钥</th><th scope="col">创建时间</th><th scope="col">操作</th></tr></thead><tbody id="keys" aria-live="polite"><tr><td colspan="6"><span class="sk"></span></td></tr><tr><td colspan="6"><span class="sk"></span></td></tr><tr><td colspan="6"><span class="sk"></span></td></tr></tbody></table></div>' +
@@ -255,7 +277,7 @@ const anchorsNav = (): string =>
   '</nav>'
 
 export function adminPage(username: string, background?: string, deviceUsername = ''): string {
-  return shell('用户与设备', topbar(username, 'admin', deviceUsername, true) + adminTabs('people') + '<main class="wrap" id="main"><h1 class="sr-only">用户与设备</h1><div class="grid-phi"><div>' +
+  return shell('用户与设备', consoleShell(username, 'admin', deviceUsername, true) + '<main class="wrap" id="main"><h1 class="sr-only">用户与设备</h1>' + adminTabs('people') + '<div class="grid-phi"><div>' +
     card('用户', table(['邮箱 / 用户名', '设备用户名', '角色', '密钥', '操作'], 'rows', '还没有用户', '用户列表') +
       '<div class="divider"></div><div class="grid-2">' +
       '<div><label class="label" for="nu">新建邮箱</label><input class="input" id="nu" type="email" placeholder="user@example.com" autocomplete="off"></div>' +
@@ -274,7 +296,7 @@ export function adminPage(username: string, background?: string, deviceUsername 
 }
 
 export function adminSettingsPage(username: string, background?: string, deviceUsername = ''): string {
-  return shell('设置', topbar(username, 'admin', deviceUsername, true) + adminTabs('settings') + '<main class="wrap" id="main"><h1 class="sr-only">设置</h1><div class="grid-phi"><div>' +
+  return shell('设置', consoleShell(username, 'admin-settings', deviceUsername, true) + '<main class="wrap" id="main"><h1 class="sr-only">设置</h1>' + adminTabs('settings') + '<div class="grid-phi"><div>' +
     '<section class="card" id="server"><h2>服务地址</h2><div class="stack">' +
     '<div><label class="label" for="public-url">公网地址</label><input class="input" id="public-url" placeholder="https://remote.example.com"><span class="small muted">仅 https，留空则按请求推导</span></div>' +
     '<div><label class="label" for="trusted-proxies">额外可信代理</label><input class="input" id="trusted-proxies" placeholder="203.0.113.7, 2001:db8::2"><span class="small muted">内网与回环默认信任</span></div>' +
