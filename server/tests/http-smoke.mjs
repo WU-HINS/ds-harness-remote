@@ -79,7 +79,7 @@ const loginHtml = String(loginPageRes.body)
 check('assets are external', loginHtml.includes('src="/assets/app.') && loginHtml.includes('.js" defer></script>') && /<script>[^<]*localStorage/.test(loginHtml))
 
 check('command palette markup', homeHtml.includes('id="cmdk"') && homeHtml.includes('cmdk-open'))
-check('nav icons rendered', homeHtml.includes('class="ico"') && homeHtml.includes('class="navlink'))
+check('nav icons rendered', homeHtml.includes('class="ico"') && homeHtml.includes('class="side-link') && homeHtml.includes('id="sidebar"'))
 check('active nav marked', homeHtml.includes('aria-current="page"'))
 
 const adminHtml = String((await req('/admin', { headers: { cookie: adminCookie } })).body)
