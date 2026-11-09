@@ -11,6 +11,7 @@ RUN pnpm --filter @dsh-remote/server... --filter @dsh-remote/web install --froze
 COPY packages/protocol/src packages/protocol/src
 COPY packages/protocol/tsconfig.json packages/protocol/tsconfig.json
 COPY server/src server/src
+COPY server/scripts server/scripts
 COPY server/tsconfig.json server/tsconfig.json
 COPY web web
 RUN pnpm --filter @dsh-remote/protocol build \
