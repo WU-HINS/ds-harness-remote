@@ -111,7 +111,7 @@ check('28 empty secret keeps the stored one', emptySecret.status === 200 && afte
 const beforeLimit = (await req('/api/v1/admin/settings', { headers: { cookie: admin } })).body.limits.userRatePerMinute
 const badLimit = await req('/api/v1/admin/settings', { method: 'PUT', headers: { 'content-type': 'application/json', cookie: admin }, body: JSON.stringify({ limits: { userRatePerMinute: null } }) })
 const afterLimit = (await req('/api/v1/admin/settings', { headers: { cookie: admin } })).body.limits.userRatePerMinute
-check('28 invalid limit is ignored, not zeroed', badLimit.status === 200 && afterLimit === beforeLimit, String(afterLimit))
+check('28 invalid limit is rejected, not zeroed', badLimit.status === 400 && afterLimit === beforeLimit, badLimit.status + ' | ' + afterLimit)
 
 await app.close()
 console.log(String.fromCharCode(10) + pass + ' passed, ' + fail + ' failed')

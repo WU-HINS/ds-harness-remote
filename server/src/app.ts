@@ -115,6 +115,12 @@ function loginErrorText(code: string | null): string | undefined {
     INVALID_EMAIL: '邮箱格式不正确',
     SETUP_KEY_INVALID: '初始化密钥无效',
     'oidc-unavailable': '本站未启用 SSO 登录',
+    oidc: '单点登录失败，请重试或联系管理员',
+    'oidc-conflict': '该邮箱已绑定其他 SSO 账号，请联系管理员',
+    'oidc-expired': '单点登录会话已过期，请重新登录',
+    'oidc-email': '身份提供方未返回已验证的邮箱',
+    'oidc-no-account': '该邮箱尚未注册，请联系管理员开通',
+    INVALID_SETTINGS: '设置有误，请检查填写内容',
     SETUP_CLOSED: '初始化已完成',
   } as Record<string, string>)[code] ?? code
 }
@@ -746,8 +752,10 @@ export function createApp(settings: Settings, deps: { pool?: Pool; mailer?: Mail
           const pick = (key: keyof typeof current) => {
             if (!Object.prototype.hasOwnProperty.call(l, key)) return current[key]
             const value = Number((l as Record<string, unknown>)[key])
-            // Reject null/NaN/non-positive instead of silently writing 0.
-            return Number.isFinite(value) && value > 0 ? Math.floor(value) : current[key]
+            // Refuse nonsense instead of quietly keeping the previous value: a
+            // silent fallback looks like a successful save.
+            if (!Number.isFinite(value)) throw new ApiError('INVALID_SETTINGS', 400, '限额必须是数字')
+            return value
           }
           patch.limits = {
             sessionTtlMs: pick('sessionTtlMs'),
@@ -1021,7 +1029,7 @@ export function createApp(settings: Settings, deps: { pool?: Pool; mailer?: Mail
       if (req.headers['sec-fetch-dest'] === 'document') {
         res.writeHead(status, { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'no-store' })
         res.end('<!doctype html><meta charset="utf-8"><title>出错了</title><main style="font:16px system-ui;max-width:36rem;margin:12vh auto;padding:0 1.2rem">' +
-          '<h1 style="font-size:20px">' + code + '</h1><p>' + (error instanceof ApiError && error.detail ? error.detail : '请求未能完成') + '</p>' +
+          '<h1 style="font-size:20px">' + (code === 'METHOD_NOT_FOUND' ? '页面不存在' : code === 'AUTH_INVALID' ? '请重新登录' : '出错了') + '</h1><p>' + (error instanceof ApiError && error.detail ? error.detail : '请求未能完成') + '</p>' +
           '<p><a href="/">返回首页</a> · <a href="/login">重新登录</a></p></main>')
         return
       }

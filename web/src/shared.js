@@ -132,7 +132,10 @@ export function initNavigation() {
 export function initChrome() {
   document.addEventListener('click', (e) => {
     const a = e.target.closest && e.target.closest('a[data-confirm]')
-    if (a && !confirm(a.getAttribute('data-confirm'))) { e.preventDefault(); e.stopPropagation() }
+    if (!a) return
+    e.preventDefault()
+    e.stopPropagation()
+    dshConfirm(a.getAttribute('data-confirm'), { title: '确认', ok: '继续' }).then((ok) => { if (ok) location.href = a.href })
   }, true)
   document.addEventListener('click', (e) => {
     const t = e.target.closest && e.target.closest('[data-action=theme]')

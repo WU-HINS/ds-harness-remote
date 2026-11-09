@@ -72,7 +72,7 @@ check('setup failure keeps the form', setupAlert.length > 0 && setupKept === 'a@
 await page.fill('#setup-key', SETUP_KEY)
 await page.fill('#setup-user', 'boss@example.com')
 await page.fill('#setup-pass', 'boss-password-123')
-await Promise.all([page.waitForURL(u => u.pathname === '/admin' || u.pathname === '/', { timeout: 15000 }), page.click('button[type=submit]')])
+await Promise.all([page.waitForURL(u => ['/admin', '/', '/account'].includes(u.pathname), { timeout: 15000 }), page.click('#setup-form button[type=submit]')])
 check('setup redirects after bootstrap', /\/(admin|account)?/.test(page.url()), page.url())
 await page.goto(BASE + '/', { waitUntil: 'domcontentloaded' })
 await page.waitForLoadState('load')
@@ -130,6 +130,9 @@ check('admin tables are keyboard regions', await page.evaluate(() => {
 }))
 check('admin page has a heading', await page.evaluate(() => Boolean(document.querySelector('h1'))))
 check('busy state clears after load', await page.evaluate(() => document.getElementById('rows')?.getAttribute('aria-busy') === 'false'))
+
+const auditText = (await page.locator('#audit').innerText().catch(() => '')).replace(/\s+/g, ' ')
+check('audit actions read Chinese', auditText.length > 0 && !/(login|user|device|device_key|oidc|setup|settings|password|auth|email)\.[a-z_]+/.test(auditText), auditText.slice(0, 70))
 
 check('admin console has no key card', (await page.locator('#key-label').count()) === 0)
 
@@ -222,17 +225,19 @@ await page.waitForTimeout(600)
 const originToast = (await page.locator('.toast-item').first().innerText().catch(() => '')).trim()
 check('settings explain the https rule', originToast.includes('https'), originToast)
 await page.fill('#public-url', '')
+await page.evaluate(() => document.querySelectorAll('.toast-item').forEach((t) => t.remove()))
 await page.fill('#conn-limit', '-5')
 await page.click('#save-limits')
-await page.waitForTimeout(600)
-const limitToast = (await page.locator('.toast-item').first().innerText().catch(() => '')).trim()
-check('invalid limits are refused', limitToast.includes('整数') || limitToast.includes('必须'), limitToast)
+await page.waitForTimeout(700)
+const limitToast = (await page.locator('.toast-item').last().innerText().catch(() => '')).trim()
+const limitSaved = await page.evaluate(() => fetch('/api/v1/admin/settings').then((r) => r.json()).then((d) => d.limits.userConnectionLimit))
+check('invalid limits are refused', limitToast.includes('整数') && limitSaved !== -5, limitToast + ' | stored=' + limitSaved)
 await page.fill('#conn-limit', '16')
 
 // Leave the console the way a reader does: the button must not land on JSON.
 await page.goto(BASE + '/admin', { waitUntil: 'domcontentloaded' })
 await Promise.all([
-  page.waitForURL('**/login', { timeout: 10000 }),
+  page.waitForURL('**/login', { timeout: 15000, waitUntil: 'domcontentloaded' }),
   page.click('header.topbar form button[type=submit]'),
 ])
 const logoutBody = (await page.content()).slice(0, 60)

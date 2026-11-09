@@ -1,12 +1,37 @@
 import { $, dshApi, dshPost, dshDel, dshEsc, dshFail, dshToast, dshConfirm } from '../shared.js'
 
 const ACTIONS = {
-  'setup.admin_created': '创建管理员', 'account.registered': '注册账号', 'login.success': '登录成功',
-  'login.failure': '登录失败', 'login.disabled': '禁用账号尝试登录', 'password.changed': '修改密码',
-  'email.changed': '换绑邮箱', 'device_key.created': '生成设备密钥', 'device_key.revoked': '吊销设备密钥',
-  'device_login.success': '设备登录', 'device_login.failure': '设备登录失败', 'device.registered': '注册设备',
-  'device.registered_from_account': '账号注册设备', 'oidc.bound': '绑定 SSO', 'oidc.unbound': '解绑 SSO',
-  'user.created': '创建用户', 'user.updated': '更新用户', 'user.deleted': '删除用户', 'device.revoked': '吊销设备',
+  'account.registered': '注册账号',
+  'auth.code_failure': '验证码校验失败',
+  'device.registered': '注册设备',
+  'device.registered_from_account': '账号注册设备',
+  'device.revoked_by_admin': '管理员吊销设备',
+  'device_key.created': '生成设备密钥',
+  'device_key.revoked': '吊销设备密钥',
+  'device_key.ticket_issued': '签发设备票据',
+  'device_login.failure': '设备登录失败',
+  'device_login.success': '设备登录',
+  'email.change_started': '发起换绑邮箱',
+  'email.changed': '换绑邮箱',
+  'login.disabled': '禁用账号尝试登录',
+  'login.failure': '登录失败',
+  'login.sso_only_rejected': '仅 SSO 下拒绝密码登录',
+  'login.success': '登录成功',
+  'oidc.auto_bound': '自动绑定 SSO',
+  'oidc.bound': '绑定 SSO',
+  'oidc.conflict': 'SSO 账号冲突',
+  'oidc.failure': 'SSO 登录失败',
+  'oidc.provisioned': '自动创建账号',
+  'oidc.rejected': 'SSO 登录被拒',
+  'oidc.success': 'SSO 登录成功',
+  'oidc.unbound': '解绑 SSO',
+  'password.changed': '修改密码',
+  'password.reset': '重置密码',
+  'settings.updated': '更新设置',
+  'setup.admin_created': '创建管理员',
+  'user.created': '创建用户',
+  'user.deleted': '删除用户',
+  'user.updated': '更新用户',
 }
 const emptyRow = (n, text) => '<tr><td colspan="' + n + '" class="muted">' + text + '</td></tr>'
 
@@ -48,7 +73,7 @@ export function init() {
     const xs = r.body.items || []
     $('audit').setAttribute('aria-busy', 'false')
     $('audit').innerHTML = xs.length
-      ? xs.map((x) => '<tr><td class="muted small">' + dshEsc(new Date(x.at).toLocaleString()) + '</td><td>' + dshEsc(x.actor || '-') + '</td><td>' + dshEsc(x.action) + '</td></tr>').join('')
+      ? xs.map((x) => '<tr><td class="muted small">' + dshEsc(new Date(x.at).toLocaleString()) + '</td><td>' + dshEsc(x.actor || '-') + '</td><td>' + dshEsc(ACTIONS[x.action] || x.action) + '</td></tr>').join('')
       : emptyRow(3, '暂无审计记录')
   })
 
@@ -59,7 +84,7 @@ export function init() {
     const a = b.getAttribute('data-a')
     if (a === 'toggle') {
       dshApi('/api/v1/admin/users/' + encodeURIComponent(id), { method: 'PATCH', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ toggle: true }) })
-        .then((r) => { dshToast(r.ok ? '状态已更新' : dshFail(r.body, r.status), r.ok ? 'ok' : 'err'); loadUsers() })
+        .then((r) => { dshToast(r.ok ? '状态已更新' : dshFail(r.body, r.status), r.ok ? 'ok' : 'err'); loadUsers(); loadAudit() })
     } else if (a === 'del') {
       if (!(await dshConfirm('删除用户 ' + b.getAttribute('data-name') + '？该用户的设备与会话会立即失效，且不可恢复。', { title: '删除用户' }))) return
       dshDel('/api/v1/admin/users/' + encodeURIComponent(id)).then((r) => { dshToast(r.ok ? '已删除' : dshFail(r.body, r.status), r.ok ? 'ok' : 'err'); loadUsers() })

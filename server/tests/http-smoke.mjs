@@ -68,6 +68,10 @@ const crossPost = await req('/api/v1/auth/login', { method: 'POST', ...json({ em
 check('cross-site document navigation is allowed', crossGet.status === 200 && String(crossGet.body).includes('<!doctype html'), String(crossGet.status))
 check('cross-site state change is refused', crossPost.status === 403, String(crossPost.status))
 
+const badLimits = await req('/api/v1/admin/settings', { method: 'PUT', headers: { 'content-type': 'application/json', cookie: adminCookie }, body: JSON.stringify({ limits: { userConnectionLimit: -5 } }) })
+const afterBad = await req('/api/v1/admin/settings', { headers: { cookie: adminCookie } })
+check('invalid limits rejected', badLimits.status === 400 && afterBad.body.limits.userConnectionLimit === 16, badLimits.status + ' | ' + afterBad.body.limits.userConnectionLimit)
+
 check('csp blocks inline scripts', /script-src 'self' 'sha256-[A-Za-z0-9+/=]+'/.test(csp) && !/script-src[^;]*unsafe-inline/.test(csp), csp.slice(0, 90))
 const loginHtml = String(loginPageRes.body)
 check('assets are external', loginHtml.includes('src="/assets/app.') && loginHtml.includes('.js" defer></script>') && /<script>[^<]*localStorage/.test(loginHtml))
