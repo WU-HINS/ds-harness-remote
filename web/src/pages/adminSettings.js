@@ -1,4 +1,4 @@
-import { $, dshApi, dshPost, dshPut, dshFail, dshToast } from '../shared.js'
+import { $, dshApi, dshPost, dshPut, dshFail, dshToast, dshConfirm } from '../shared.js'
 
 export function init() {
   dshApi('/api/v1/admin/settings').then((r) => {
@@ -31,8 +31,8 @@ export function init() {
     .then((r) => dshToast(r.ok ? '已保存' : dshFail(r.body, r.status), r.ok ? 'ok' : 'err'))
   $('save-ui').onclick = () => dshPut('/api/v1/admin/settings', { ui: { backgroundUrl: $('bg-url').value.trim() } })
     .then((r) => dshToast(r.ok ? '已保存，刷新可见' : dshFail(r.body, r.status), r.ok ? 'ok' : 'err'))
-  $('save-oidc').onclick = () => {
-    if ($('only-sso').checked && !confirm('开启仅 SSO 后，除当前会话外的密码登录会话会被清除，密码登录与找回密码将不可用。继续？')) return
+  $('save-oidc').onclick = async () => {
+    if ($('only-sso').checked && !(await dshConfirm('开启仅 SSO 后，除当前会话外的密码登录会话会被清除，密码登录与找回密码将不可用。', { title: '开启仅 SSO' }))) return
     dshPut('/api/v1/admin/settings', {
       oidc: {
         enabled: $('oidc-enabled').checked, onlySso: $('only-sso').checked, bindRequireVerification: $('bind-require').checked,

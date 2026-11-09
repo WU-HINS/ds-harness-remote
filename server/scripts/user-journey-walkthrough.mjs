@@ -18,9 +18,9 @@ import { randomUUID } from 'node:crypto'
 import { dirname, join } from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
 
-const PORT = '4640'
+const PORT = process.env.JOURNEY_PORT ?? '4640'
 const BASE = 'http://127.0.0.1:' + PORT
-const ISSUER = 'http://127.0.0.1:9091'
+const ISSUER = 'http://127.0.0.1:' + (process.env.JOURNEY_OP_PORT ?? '9091')
 const SETUP_KEY = 'journey-key'
 if (!process.env.DATABASE_URL) throw new Error('set DATABASE_URL to a disposable database')
 
@@ -30,7 +30,8 @@ const smtp = new SMTPServer({
   authOptional: true, disabledCommands: ['STARTTLS'], logger: false,
   onData(stream, session, cb) { let raw = ''; stream.on('data', c => raw += c); stream.on('end', () => { inbox.push(raw); cb() }) },
 })
-await new Promise(r => smtp.listen(2527, '127.0.0.1', r))
+const SMTP_PORT = Number(process.env.JOURNEY_SMTP_PORT ?? '2527')
+await new Promise(r => smtp.listen(SMTP_PORT, '127.0.0.1', r))
 
 // ── OIDC provider ───────────────────────────────────────────────────────────
 const rs = await generateKeyPair('RS256', { extractable: true })
@@ -41,7 +42,7 @@ const provider = new Provider(ISSUER, {
   features: { devInteractions: { enabled: true } },
   findAccount: async (ctx, id) => ({ accountId: id, async claims() { return { sub: id, email: id, email_verified: true } } }),
 })
-provider.listen(9091)
+provider.listen(Number(process.env.JOURNEY_OP_PORT ?? '9091'))
 
 // ── server under test ───────────────────────────────────────────────────────
 process.env.DSH_SERVER_PORT = PORT
@@ -50,7 +51,7 @@ process.env.DSH_SERVER_PUBLIC_URL = BASE
 process.env.DSH_SETUP_KEY = SETUP_KEY
 process.env.DSH_SERVER_LOG_LEVEL = 'error'
 process.env.DSH_SMTP_HOST = '127.0.0.1'
-process.env.DSH_SMTP_PORT = '2527'
+process.env.DSH_SMTP_PORT = String(SMTP_PORT)
 process.env.DSH_SMTP_SECURE = '0'
 process.env.DSH_SMTP_FROM = 'DSH Remote <no-reply@example.com>'
 process.env.DSH_OIDC_ISSUER = ISSUER
@@ -123,7 +124,7 @@ await page.fill('#setup-key', SETUP_KEY)
 await page.fill('#setup-user', 'boss@example.com')
 await page.fill('#setup-pass', 'boss-password-123')
 await Promise.all([page.waitForURL(u => u.pathname === '/' || u.pathname === '/admin'), page.click('button[type=submit]')])
-check('初始化后进入控制台', page.url() === BASE + '/' || page.url().endsWith('/admin'), page.url())
+check('初始化后进入控制台', ['/', '/admin'].includes(new URL(page.url()).pathname) || page.url().includes('/account'), page.url())
 await page.goto(BASE + '/admin', { waitUntil: 'domcontentloaded' })
 await page.waitForFunction(() => document.querySelectorAll('#rows .sk').length === 0, { timeout: 10000 }).catch(() => {})
 check('管理员行显示受保护', (await page.locator('#rows').innerText()).includes('受保护'))

@@ -1,4 +1,4 @@
-import { $, dshApi, dshPost, dshDel, dshEsc, dshFail, dshToast } from '../shared.js'
+import { $, dshApi, dshPost, dshDel, dshEsc, dshFail, dshToast, dshConfirm } from '../shared.js'
 
 const ACTIONS = {
   'setup.admin_created': '创建管理员', 'account.registered': '注册账号', 'login.success': '登录成功',
@@ -11,6 +11,10 @@ const ACTIONS = {
 const emptyRow = (n, text) => '<tr><td colspan="' + n + '" class="muted">' + text + '</td></tr>'
 
 export function init() {
+  const q = new URLSearchParams(location.search)
+  if (q.get('oidc') === 'bound') dshToast('SSO 身份已绑定', 'ok')
+  if (q.get('oidc') === 'already-bound') dshToast('该账号已绑定 SSO', 'ok')
+  if (q.get('oidc') === 'email-mismatch') dshToast('SSO 邮箱与账号不一致，未绑定', 'err')
   const loadUsers = () => dshApi('/api/v1/admin/users').then((r) => {
     const rows = r.body.users || []
     $('userCount').textContent = rows.length
@@ -48,7 +52,7 @@ export function init() {
       : emptyRow(3, '暂无审计记录')
   })
 
-  document.addEventListener('click', (e) => {
+  document.addEventListener('click', async (e) => {
     const b = e.target.closest ? e.target.closest('button[data-a]') : null
     if (!b) return
     const id = b.getAttribute('data-id')
@@ -57,10 +61,10 @@ export function init() {
       dshApi('/api/v1/admin/users/' + encodeURIComponent(id), { method: 'PATCH', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ toggle: true }) })
         .then((r) => { dshToast(r.ok ? '状态已更新' : dshFail(r.body, r.status), r.ok ? 'ok' : 'err'); loadUsers() })
     } else if (a === 'del') {
-      if (!confirm('删除用户 ' + b.getAttribute('data-name') + '？该用户的设备与会话会立即失效，且不可恢复。')) return
+      if (!(await dshConfirm('删除用户 ' + b.getAttribute('data-name') + '？该用户的设备与会话会立即失效，且不可恢复。', { title: '删除用户' }))) return
       dshDel('/api/v1/admin/users/' + encodeURIComponent(id)).then((r) => { dshToast(r.ok ? '已删除' : dshFail(r.body, r.status), r.ok ? 'ok' : 'err'); loadUsers() })
     } else if (a === 'revoke-device') {
-      if (!confirm('吊销设备 ' + b.getAttribute('data-name') + '？它会立即断开。')) return
+      if (!(await dshConfirm('吊销设备 ' + b.getAttribute('data-name') + '？它会立即断开。', { title: '吊销设备' }))) return
       dshDel('/api/v1/admin/devices/' + encodeURIComponent(id)).then((r) => { dshToast(r.ok ? '已吊销' : dshFail(r.body, r.status), r.ok ? 'ok' : 'err'); loadDevices() })
     }
   })

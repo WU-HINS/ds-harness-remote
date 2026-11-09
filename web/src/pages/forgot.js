@@ -12,7 +12,7 @@ export function init() {
     dshPost('/api/v1/auth/password/reset/complete', {
       email: $('fg-email').value.trim(), code: $('fg-code').value.trim(), password: $('fg-pass').value,
     }).then((r) => {
-      if (r.ok) dshToast('已重置，请返回登录', 'ok')
+      if (r.ok) { dshToast('密码已重置，正在返回登录…', 'ok'); setTimeout(() => { location.href = '/login' }, 900) }
       else dshToast(dshFail(r.body, r.status), 'err')
     })
   }

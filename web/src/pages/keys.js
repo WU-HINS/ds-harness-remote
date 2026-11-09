@@ -1,4 +1,4 @@
-import { $, dshApi, dshPost, dshDel, dshCopy, dshEsc, dshFail, dshToast } from '../shared.js'
+import { $, dshApi, dshPost, dshDel, dshCopy, dshEsc, dshFail, dshToast, dshConfirm } from '../shared.js'
 
 export function init() {
   let all = []; let state = 'all'
@@ -29,13 +29,13 @@ export function init() {
   load()
   $('q').addEventListener('input', render)
   document.querySelectorAll('[data-state]').forEach((b) => {
-    b.onclick = () => {
+    b.onclick = async () => {
       state = b.dataset.state
       document.querySelectorAll('[data-state]').forEach((x) => x.setAttribute('aria-pressed', String(x === b)))
       render()
     }
   })
-  document.addEventListener('click', (e) => {
+  document.addEventListener('click', async (e) => {
     const b = e.target.closest('button[data-a]')
     if (!b) return
     const a = b.dataset.a
@@ -44,7 +44,7 @@ export function init() {
       if (m) { m.textContent = m.getAttribute('data-key'); b.remove() }
     } else if (a === 'copy') dshCopy(b.dataset.key)
     else if (a === 'revoke') {
-      if (!confirm('吊销这把密钥？使用它的设备会立即掉线，且无法用同一设备 ID 重新接入。')) return
+      if (!(await dshConfirm('吊销这把密钥？使用它的设备会立即掉线，且无法用同一设备 ID 重新接入。'))) return
       dshDel('/api/v1/account/device-keys/' + encodeURIComponent(b.dataset.id))
         .then((r) => { dshToast(r.ok ? '已吊销' : dshFail(r.body, r.status), r.ok ? 'ok' : 'err'); load() })
     }

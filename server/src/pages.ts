@@ -191,7 +191,7 @@ export function accountPage(username: string, email: string, oidcBound: boolean,
     ? card('修改密码', '<p class="muted small" style="margin:0">仅 SSO 模式已启用，密码修改不可用。</p>')
     : card('修改密码', '<div class="stack">' +
         '<div><label class="label" for="cur-pass">当前密码</label><input class="input" id="cur-pass" type="password" autocomplete="current-password"></div>' +
-        '<div><label class="label" for="new-pass">新密码</label><input class="input" id="new-pass" type="password" placeholder="至少 12 位" autocomplete="new-password"></div>' +
+        '<div><label class="label" for="new-pass">新密码</label><input class="input" id="new-pass" type="password" minlength="12" placeholder="至少 12 位" autocomplete="new-password"></div>' +
         '<button class="btn" type="button" id="change-pw">保存</button></div>')
   return shell('我的账户', topbar(username, 'account', deviceUsername, isAdmin) + accountTabs('profile') + '<main class="wrap" id="main"><h1 class="sr-only">我的账户</h1><div class="grid-phi"><div>' +
     card('账户', '<div class="grid-2">' +

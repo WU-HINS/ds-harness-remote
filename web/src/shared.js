@@ -48,7 +48,7 @@ const ERRORS = {
   AUTH_INVALID: '邮箱或密码不正确', EMAIL_UNVERIFIED: '邮箱尚未验证', SSO_ONLY: '已启用仅 SSO，请用身份提供方登录',
   CODE_INVALID: '验证码不正确或已过期', EMAIL_TAKEN: '该邮箱已被使用', EMAIL_RATE_LIMITED: '发送过于频繁，请 60 秒后重试',
   EMAIL_QUOTA_EXCEEDED: '该邮箱今日验证码次数已用完', RATE_LIMITED: '请求过于频繁，请稍后重试',
-  SMTP_NOT_CONFIGURED: '服务端未配置 SMTP，请联系管理员', INVALID_EMAIL: '邮箱格式不正确',
+  SMTP_NOT_CONFIGURED: '服务端未配置 SMTP，请联系管理员', INVALID_EMAIL: '邮箱格式不正确', INVALID_MESSAGE: '填写内容不合法，请检查后重试', INVALID_SETTINGS: '设置有误，请检查填写内容', PASSWORD_INVALID: '当前密码不正确', ACCOUNT_DISABLED: '账号已被禁用，请联系管理员',
   SETUP_REQUIRED: '服务尚未初始化', OIDC_EXPIRED: '绑定会话已过期，请重新登录', DEVICE_KEY_REQUIRED: '需要设备密钥',
 }
 export const dshErr = (code, status) => ERRORS[code] || '操作失败（' + (code || status) + '）'
@@ -67,9 +67,31 @@ export const dshFail = (body, status) => {
   return dshErr(error.code, status)
 }
 
+export function dshConfirm(message, options = {}) {
+  return new Promise((resolve) => {
+    const dlg = document.createElement('dialog')
+    dlg.className = 'confirm'
+    dlg.setAttribute('aria-labelledby', 'confirm-title')
+    const title = options.title || '确认操作'
+    dlg.innerHTML = '<h2 id="confirm-title" style="border:0;padding:0;margin:0 0 10px">' + dshEsc(title) + '</h2>' +
+      '<p class="muted small" style="margin:0 0 16px">' + dshEsc(message) + '</p>' +
+      '<div class="row" style="justify-content:flex-end"><button class="btn ghost" type="button" data-r="0">取消</button>' +
+      '<button class="btn ' + (options.danger === false ? '' : 'danger') + '" type="button" data-r="1">' + dshEsc(options.ok || '确认') + '</button></div>'
+    document.body.appendChild(dlg)
+    const done = (value) => { dlg.close(); dlg.remove(); resolve(value) }
+    dlg.addEventListener('click', (e) => {
+      const b = e.target.closest('button[data-r]')
+      if (b) done(b.dataset.r === '1')
+      else if (e.target === dlg) done(false)
+    })
+    dlg.addEventListener('cancel', (e) => { e.preventDefault(); done(false) })
+    dlg.showModal()
+  })
+}
+
 export function dshCopy(text) {
-  if (!navigator.clipboard) return dshHint('请手动选择复制', 'err')
-  navigator.clipboard.writeText(text).then(() => dshHint('已复制', 'ok'), () => dshHint('复制失败，请手动选择', 'err'))
+  if (!navigator.clipboard) return toast('请手动选择复制', 'err')
+  navigator.clipboard.writeText(text).then(() => toast('已复制到剪贴板', 'ok'), () => toast('复制失败，请手动选择', 'err'))
 }
 
 export function applyTheme(pref) {
