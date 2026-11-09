@@ -63,7 +63,8 @@ Each user can hold several device keys. Revoking a key immediately disconnects e
 with it; revocation is terminal — the same device id cannot re-enrol.
 
 Administrators can turn on **SSO-only**, which disables password login, password reset, self-service
-password change, OIDC unbinding, and password-based device login. `DSH_BREAK_GLASS_PASSWORD=1` keeps
+password change and OIDC unbinding. Devices may still enrol with the account password — that is a
+device credential, not a web login. `DSH_BREAK_GLASS_PASSWORD=1` keeps
 password login available for lockout recovery.
 
 ## Configuration

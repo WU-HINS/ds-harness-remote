@@ -55,7 +55,7 @@ Revoking a key disconnects and revokes every device enrolled with it. Revocation
 |---|---|---|
 | password login | allowed | `403` |
 | password reset / change | allowed | `403` |
-| device login with password | allowed | `401` |
+| device login with password | allowed | allowed (device credential, not web) |
 | device login with key | allowed | allowed |
 | unbind OIDC | allowed | `403` |
 | self-registration | allowed | `403` |

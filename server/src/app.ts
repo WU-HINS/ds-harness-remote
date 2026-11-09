@@ -367,8 +367,9 @@ export function createApp(settings: Settings, deps: { pool?: Pool; mailer?: Mail
       const verified = await store.verifyDeviceCredential(username, deviceKey, true)
       let userId: string | undefined = verified?.user.id
       let keyId: string | undefined = verified?.keyId
-      if (!userId && !onlySso) {
-        // Only when SSO is not mandatory may the login password act as a device secret.
+      if (!userId) {
+        // SSO-only blocks the *web* password login; a device may still enrol with
+        // the account password, which is a device credential like any other.
         const user = await store.findUserByLogin(username).catch(() => undefined)
         if (user && !user.disabled && (await verifyPasswordAsync(deviceKey, user.password_hash))) {
           userId = user.id

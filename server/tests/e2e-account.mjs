@@ -64,7 +64,7 @@ const changeUnderSso = await req('/api/v1/auth/password/change', { method: 'POST
 // Switching to SSO-only drops the user's password session, so 401 and 403 are both correct.
 check('14 password change blocked under onlySso', [401, 403].includes(changeUnderSso.status), String(changeUnderSso.status))
 const devSso = await req('/api/v1/auth/device-login', { method: 'POST', ...json({ username: 'erin2@example.com', deviceKey: 'erin-password-456', v: 1, device: { deviceId: 'erin-tablet', name: 'tablet', role: 'client', identityKey: 'q'.repeat(32) } }) })
-check('15 password device login refused under onlySso', devSso.status === 401, String(devSso.status))
+check('15 password device login allowed under onlySso', devSso.status === 200, String(devSso.status))
 
 await app.close()
 console.log(String.fromCharCode(10) + pass + ' passed, ' + fail + ' failed')

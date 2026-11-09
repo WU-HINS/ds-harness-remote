@@ -101,7 +101,9 @@ check('9 password acts as device secret', dev.status === 200 && typeof dev.body.
 
 // 9. onlySso 后：密码设备登录拒绝，设备密钥仍可用
 await req('/api/v1/admin/settings', { method: 'PUT', headers: { 'content-type': 'application/json', cookie: admin }, body: JSON.stringify({ oidc: { onlySso: true } }) })
-check('10 password device login refused under onlySso', (await req('/api/v1/auth/device-login', { method: 'POST', ...json({ username: 'b@example.com', deviceKey: 'second-password-123', v: 1, device: { deviceId: 'x1-phone', name: 'x', role: 'client', identityKey: 'x'.repeat(32) } }) })).status === 401)
+// SSO-only blocks the web form, not the device credential.
+check('10 password device login still works under onlySso', (await req('/api/v1/auth/device-login', { method: 'POST', ...json({ username: 'b@example.com', deviceKey: 'second-password-123', v: 1, device: { deviceId: 'x1-phone', name: 'x', role: 'client', identityKey: 'x'.repeat(32) } }) })).status === 200)
+check('10b web password login stays blocked', (await req('/api/v1/auth/login', { method: 'POST', ...json({ email: 'b@example.com', password: 'second-password-123' }) })).status === 403)
 const users = await req('/api/v1/admin/users', { headers: { cookie: admin } })
 const deviceUsername = users.body.users.find(u => u.username === 'a').deviceUsername
 const byKey = await req('/api/v1/auth/device-login', { method: 'POST', ...json({ username: deviceUsername, deviceKey: reg.body.deviceKey, v: 1, device: { deviceId: 'x2-phone', name: 'x', role: 'client', identityKey: 'y'.repeat(32) } }) })

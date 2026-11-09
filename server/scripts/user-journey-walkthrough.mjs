@@ -367,6 +367,9 @@ const ssoLogin = await oidcLogin('nina2@example.com')
 check('仅 SSO 下 OIDC 仍可登录', ssoLogin === BASE + '/', ssoLogin)
 const keyUnderSso = await api('/api/v1/auth/device-login', { method: 'POST', body: JSON.stringify({ username: deviceUsername, deviceKey: keysByLabel.Pixel.key, device: clientDev }) })
 check('仅 SSO 下设备用户名 + 密钥可用', keyUnderSso.status === 200, String(keyUnderSso.status))
+const pwDevice = await api('/api/v1/auth/device-login', { method: 'POST', body: JSON.stringify({ username: 'nina', deviceKey: 'nina-password-456', device: { ...clientDev, deviceId: 'nina-client-0003' } }) })
+check('仅 SSO 下设备可用账号密码接入', pwDevice.status === 200, String(pwDevice.status))
+
 // The account page must stay functional with the password card removed.
 const pageErrors = []
 page.on('pageerror', e => pageErrors.push(e.message))
