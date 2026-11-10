@@ -117,6 +117,34 @@ await page.waitForTimeout(800)
 const afterRemove = (await page.locator('#devices').innerText()).replace(/\s+/g, ' ')
 check('device disconnect clears the row', afterRemove.includes('还没有设备接入'), afterRemove.slice(0, 50))
 
+// Keys: create, reveal, revoke — all from the list, no page reload.
+await page.goto(BASE + '/account/keys', { waitUntil: 'domcontentloaded' })
+await page.waitForTimeout(500)
+const keysBefore = await page.locator('#keys tr').count()
+await page.fill('#key-label', 'laptop')
+await page.click('#create-key')
+await page.waitForTimeout(700)
+const keysAfter = await page.locator('#keys tr').count()
+const revealedKey = await page.evaluate(async () => {
+  const rows = [...document.querySelectorAll('#keys tr')]
+  const row = rows.find((r) => r.innerText.includes('laptop'))
+  if (!row) return ''
+  row.querySelector('button[data-a="reveal"]')?.click()
+  await new Promise((r) => setTimeout(r, 120))
+  return (row.querySelector('.keymask')?.textContent || '').trim()
+})
+check('key lifecycle works from the list', keysAfter === keysBefore + 1 && revealedKey.length >= 16 && !revealedKey.includes('•'), keysBefore + '->' + keysAfter + ' | ' + revealedKey.slice(0, 8))
+await page.evaluate(() => {
+  const rows = [...document.querySelectorAll('#keys tr')]
+  const row = rows.find((r) => r.innerText.includes('laptop'))
+  row?.querySelector('button[data-a="revoke"]')?.click()
+})
+await page.waitForTimeout(300)
+await page.click('dialog.confirm button[data-r="1"]')
+await page.waitForTimeout(700)
+const toastText = (await page.locator('.toast-item').last().innerText().catch(() => '')).trim()
+check('revoking a key reports the impact', toastText.includes('吊销'), toastText)
+
 // 3. topbar chrome
 check('topbar visible', await page.locator('header.topbar').isVisible())
 check('nav icons rendered', (await page.locator('.side-link .ico').count()) >= 3 + 1)
