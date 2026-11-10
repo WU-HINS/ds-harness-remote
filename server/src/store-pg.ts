@@ -276,28 +276,28 @@ export class Store {
     return { id, label, key }
   }
 
-  async listDeviceKeys(userId: string): Promise<Array<{ id: string; label: string; revoked: boolean; createdAt: string; lastUsedAt: string | null; deviceCount: number }>> {
-    const keys = await this.pool.query(
-      'SELECT id, label, revoked, created_at, last_used_at, secret FROM device_keys WHERE user_id = $1 ORDER BY created_at, id', [userId])
-    const counts = await this.pool.query(
-      "SELECT device_key_id, count(*)::int AS n FROM devices WHERE user_id = $1 AND revoked = false AND device_key_id IS NOT NULL GROUP BY device_key_id", [userId])
+  async listDeviceKeys(userId: string): Promise<Array<{ id: string; label: string; revoked: boolean; createdAt: string; lastUsedAt: string | null; deviceCount: number; revealable: boolean; key?: string }>> {
+    const keys = await this.pool.query('SELECT id, label, revoked, created_at, last_used_at, secret FROM device_keys WHERE user_id = $1 ORDER BY created_at, id', [userId])
+    const counts = await this.pool.query("SELECT device_key_id, count(*)::int AS n FROM devices WHERE user_id = $1 AND revoked = false AND device_key_id IS NOT NULL GROUP BY device_key_id", [userId])
     const byKey = new Map<string, number>()
     for (const row of counts.rows) byKey.set(row.device_key_id, row.n)
-    const listed = await Promise.all(keys.rows.map(async (row: any) => ({
-      id: row.id, label: row.label, revoked: row.revoked,
-      createdAt: row.created_at, lastUsedAt: row.last_used_at,
-      deviceCount: byKey.get(row.id) ?? 0,
-      // Keys created before the secret column existed cannot be revealed.
-      ...(row.revoked ? {} : { key: await this.openSecret(row.secret) }),
-    })))
+    // A live key is reversible by contract: the owner may echo it again. Revoked
+    // keys and legacy rows without a sealed copy are flagged, never silently blank.
+    const listed = await Promise.all(keys.rows.map(async (row: any) => {
+      const key = row.revoked ? undefined : await this.openSecret(row.secret)
+      return {
+        id: row.id, label: row.label, revoked: row.revoked,
+        createdAt: row.created_at, lastUsedAt: row.last_used_at,
+        deviceCount: byKey.get(row.id) ?? 0,
+        revealable: key !== undefined, ...(key !== undefined ? { key } : {}),
+      }
+    }))
     // Devices enrolled before device keys existed have no binding. Surface them
     // instead of letting the panel under-report live devices.
     const unbound = await this.pool.query(
       'SELECT count(*)::int AS n FROM devices WHERE user_id = $1 AND revoked = false AND device_key_id IS NULL', [userId])
     const unboundCount = unbound.rows[0]?.n ?? 0
-    if (unboundCount > 0) {
-      listed.push({ id: 'unbound', label: '(未绑定密钥)', revoked: false, createdAt: '', lastUsedAt: null, deviceCount: unboundCount })
-    }
+    if (unboundCount > 0) listed.push({ id: 'unbound', label: '(未绑定密钥)', revoked: false, createdAt: '', lastUsedAt: null, deviceCount: unboundCount, revealable: false })
     return listed
   }
 

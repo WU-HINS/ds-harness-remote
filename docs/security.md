@@ -17,7 +17,10 @@ Relay frames are never written to logs or the database.
 - Session and device tokens: only SHA-256 digests at rest; refresh rotation with a 2-minute recovery window
   and device revocation on replay.
 - Verification codes: HMAC-SHA256 with a server-held key, single use, 5 attempts.
-- Device keys: only digests stored; plaintext shown once at creation.
+- Device keys: a SHA-256 digest for lookup **plus an AES-256-GCM copy sealed with a key derived from the
+  server secret**, because the account page lets the owner reveal a key again. Anyone holding both a database
+  dump and the process secret can recover every device key: treat backups as credentials. Revoked keys are
+  never revealed again, and revoking a key also revokes its devices and deletes their tokens.
 
 ## Trust boundaries
 
@@ -25,6 +28,12 @@ Relay frames are never written to logs or the database.
   devices, reset passwords and read metadata. Run it where you trust the operator.
 - **Same-tenant isolation is enforced server-side**: devices, presence, terminal and relay links are
   scoped to the owning user; foreign ids return 404, not 403.
+- **Relay budget.** Ordinary accounts share one server-wide 5 MiB/s budget, split by a weight that
+  decays with each account's own recent throughput — the more an account occupies, the smaller its
+  share. A single fast transfer therefore cannot starve the others. Overrunning your own share
+  queues relay frames per device instead of dropping them (a gap breaks the peer's counter
+  ordering); a queue that overflows or stalls for 15 seconds closes that connection with
+  `RATE_LIMITED`. Queue memory is bounded per device, so the protection is not tradable for RAM.
 - **Reverse proxy limits.** Rate limiting is per client IP. Behind a proxy without
   `DSH_SERVER_TRUSTED_PROXY_IPS` every anonymous request shares one bucket.
 - **CSRF.** State-changing requests require a same-origin `Origin` or are blocked by

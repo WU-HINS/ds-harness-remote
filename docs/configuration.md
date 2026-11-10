@@ -53,6 +53,32 @@ host or LAN works with no configuration; a proxy on a public IP must be listed.
 Anonymous limits apply to login, registration and reset endpoints keyed by client IP. Without
 `DSH_SERVER_TRUSTED_PROXY_IPS` every request behind a proxy shares one bucket.
 
+## Relay budget (boot-time)
+
+Relayed bytes are capped in aggregate so one account cannot starve the process, the uplink or the
+database's neighbours.
+
+| Setting | Default |
+|---|---|
+| `DSH_SERVER_RELAY_BYTES_PER_SECOND` | `5242880` (5 MiB/s) |
+
+Ordinary accounts share that budget **by weight**, and the weight falls as an account occupies more of
+it:
+
+- `rate` is the account's smoothed relay throughput (roughly a one-second window);
+- `weight = 1 / (1 + rate / budget)` — an idle account weighs 1, one saturating the budget weighs ½;
+- `share = budget × weight / Σ weights`, so shares always add up to the budget and a sole active
+  account still gets all of it;
+- each account holds a bucket of one second of its share (minimum 64 KiB), refilled at that share.
+
+An account that overruns its own share does not get disconnected on the first frame: relay frames
+are held in a per-device FIFO (32 frames / 256 KiB, order preserved) and released as credit
+returns, so a burst is smoothed instead of cut. Frames are never dropped — a missing relay frame
+breaks the peer's counter ordering. A queue that overflows, or that cannot move for 15 seconds,
+closes that connection with `RATE_LIMITED` and logs `relay_queue_stalled`. Idle time restores the
+weight within about half a minute. Administrator accounts are exempt. `0` disables the whole
+mechanism, which is reasonable for a single-user deployment.
+
 ## SMTP
 
 Required for self-registration, password reset, email change and code-based OIDC binding.

@@ -26,6 +26,18 @@ const bob = await store.createUser({ username: 'bob', role: 'user' })
 check('device key verifies', (await store.verifyDeviceKey('alice', alice.deviceKey))?.id === alice.user.id)
 check('wrong device key rejected', (await store.verifyDeviceKey('alice', 'x'.repeat(43))) === undefined)
 
+// Device keys are echoable by contract: the owner may read a live key again.
+const firstKey = await store.createDeviceKey(alice.user.id, 'laptop')
+let aliceKeys = await store.listDeviceKeys(alice.user.id)
+let firstRow = aliceKeys.find((k) => k.id === firstKey.id)
+check('live key echoes back unchanged', firstRow?.revealable === true && firstRow?.key === firstKey.key)
+await store.revokeDeviceKey(firstKey.id, alice.user.id)
+firstRow = (await store.listDeviceKeys(alice.user.id)).find((k) => k.id === firstKey.id)
+check('revoked key refuses to echo', firstRow?.revealable === false && firstRow?.key === undefined)
+await pool.query("INSERT INTO device_keys (id, user_id, label, key_hash, secret) VALUES ('legacy-key', $1, 'legacy', 'x', NULL)", [alice.user.id])
+firstRow = (await store.listDeviceKeys(alice.user.id)).find((k) => k.id === 'legacy-key')
+check('legacy key is flagged, never blank', firstRow?.revealable === false && firstRow?.key === undefined)
+
 const open = await store.createSession(alice.user.id, 3600_000)
 check('session resolves user', (await store.sessionUser(open.token))?.id === alice.user.id)
 

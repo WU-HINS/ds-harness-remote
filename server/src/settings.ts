@@ -13,6 +13,8 @@ export interface Settings {
   anonRatePerMinute: number
   /** Concurrent WebSocket connections per non-admin user. */
   userConnectionLimit: number
+  /** Server-wide relay budget for ordinary accounts, bytes per second. 0 disables it. */
+  relayBytesPerSecond: number
   trustedProxyIps: string[]
   oidc?: {
     issuer: string
@@ -59,6 +61,7 @@ export function loadSettings(env: NodeJS.ProcessEnv = process.env): Settings {
     userRatePerMinute: int(env.DSH_USER_RATE_PER_MINUTE, 600, 10, 100_000),
     anonRatePerMinute: int(env.DSH_ANON_RATE_PER_MINUTE, 30, 1, 10_000),
     userConnectionLimit: int(env.DSH_USER_CONNECTION_LIMIT, 16, 1, 4096),
+    relayBytesPerSecond: int(env.DSH_SERVER_RELAY_BYTES_PER_SECOND, 5 * 1024 * 1024, 0, 1024 * 1024 * 1024),
     trustedProxyIps: (env.DSH_SERVER_TRUSTED_PROXY_IPS ?? '').split(',').map(v => v.trim()).filter(Boolean),
     oidc,
     logLevel: (env.DSH_SERVER_LOG_LEVEL as Settings['logLevel']) ?? 'info',

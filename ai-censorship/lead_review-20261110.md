@@ -1,0 +1,422 @@
+# lead — 评审记录 2026-11-10
+
+- 范围：为仓库引入工程约束（`root.ai.md`）与静态门禁（`scripts/guard`），并核对现有实现。
+- 基线：`1.15.14` / 协议 `0.5.21`，分支 `feat/multi-user-auth`。
+- 结论：**无 P0**。4 项 P1 全部当次关闭；4 项 P2 登记为债务。
+
+## 证据
+
+```
+node scripts/guard/index.mjs        # 10 rules, 0 violation(s)
+pnpm -r check                      # protocol ✓ server ✓
+pnpm -r test                       # server 9 套冒烟 + protocol 9 套（94 tests）
+grep -ohE "new ApiError\('[A-Z_]+'" server/src/*.ts | sort -u | wc -l   # 53
+grep -ohE "audit\('[a-z_.]+'" server/src/*.ts | sort -u | wc -l          # 33
+```
+
+## P1（已关闭）
+
+### P1-1 文档承诺了两个不存在的端点
+
+- 证据：`docs/api.md:43-44` 记载 `GET/POST /api/v1/admin/users/:id/device-keys` 与
+  `DELETE /api/v1/admin/device-keys/:id`；`server/src/app.ts` 中不存在这两个路由
+  （管理端用户正则只到 `/api/v1/admin/users/:id`，且 `:id` 的 `PATCH`/`DELETE` 都要求 `!match[2]`）。
+  `grep -rn "admin/device-keys" server/src` 无结果。
+- 影响：文档把未实现能力写成已实现，客户端据此接入直接 404；属 §11「对外承诺失真」。
+- 处置：按代码事实重写 `docs/api.md`，删除两条不存在的端点，补齐实际存在的
+  `/api/v1/account/device-keys`、`/api/v1/account/devices/:id` 等 8 条遗漏。
+- 防回流：`route-doc-sync` 双向比对，文档多写或代码漏写都会失败。
+
+### P1-2 协议包的 9 套用例从未被执行，其中 5 套已静默腐化
+
+- 证据：根 `package.json` 的 `test` 曾是 `pnpm --filter @dsh-remote/server test`，CI 只跑 `pnpm test`；
+  `packages/protocol/tests` 的 9 个文件因此从未在 CI 运行（`pnpm -r check` 只做类型检查）。
+  把根 `test` 改为 `pnpm -r test` 后立刻暴露：5 套用例加载失败，报
+  `Failed to load url ../../../scripts/test-scenarios.mjs`；`conformance-fixtures` 报
+  `ENOENT fixtures/protocol/v1/manifest.json`。
+- 根因：`b08a746 refactor: standalone server repository` 把共享 monorepo 拆成独立仓库时，
+  漏掉了测试基建 `scripts/test-scenarios.mjs` 与 `fixtures/protocol/v1/`，而根门禁不跑协议用例，
+  所以没有任何信号。
+- 处置：从 `f01b4d2` 恢复 `scripts/test-scenarios.mjs`（31 行，零依赖）与
+  `fixtures/protocol/v1/`（11 个文件）；根 `test` 改为 `pnpm -r test`；
+  `test-wiring` 新增「测试里的相对导入必须可解析」，指向不存在的模块即失败。
+- 证据（修复后）：`packages/protocol` 9 files / **94 tests passed**；server 9 套冒烟全绿。
+- 判别测试：在 `packages/protocol/tests` 放一个导入 `../../../scripts/ghost-scenarios.mjs` 的探针文件，
+  `test-wiring` 立即变红；删除后恢复绿。
+
+### P1-3 不存在任何静态不变量检查
+
+- 证据：提交前只有 build/check/test，没有任何机制阻止「SQL 出现在路由层」「console 绕过 logger」
+  「文档与路由漂移」「文件无限膨胀」「测试无人执行」。
+- 处置：新增 `scripts/guard`（10 条规则）、`pnpm guard`、`pnpm verify`，CI 的 quality job 增加 `pnpm guard`；
+  契约文件同时在仓库根与工作区根落地，两份由 `root-mirror` 规则校验一致性（只改镜像会立即失败）。
+- 判别测试（注入 → 变红 → 撤回）：
+
+  | 注入 | 结果 |
+  |---|---|
+  | `server/src/__guard_selftest.ts` 含 `DELETE FROM users` 与 `console.log` | `sql-containment`、`console-containment` 失败 |
+  | `docs/api.md` 追加 `/api/v1/ghost` | `route-doc-sync` 失败 |
+  | 测试文件导入不存在的模块 | `test-wiring` 失败 |
+  | 撤回全部注入 | 9 条规则全绿 |
+
+### P1-4 `docs/api.md` 与实现整体脱节（8 条端点缺失）
+
+- 证据：`route-doc-sync` 首次运行列出 9 条「代码有、文档无」，其中 6 条是真实对外端点，
+  3 条是历史 OAuth 探测。文档停留在旧版管理端模型。
+- 处置：重写 `docs/api.md`，按 5 个分区给出准确的方法、路径与用途；遗留 OAuth 探测单列一节
+  并写明「不是受支持面」。
+
+## P2（登记，不改本次行为）
+
+| # | 问题 | 证据 | 退出条件 |
+|---|---|---|---|
+| 1 | `server/src/app.ts` 1090 行，分发/handler/页面装配混在一处 | `wc -l` | 拆出路由表与 handler，≤700 行 |
+| 2 | `server/src/store-pg.ts` 799 行 | `wc -l` | 按领域拆分，事务边界不变 |
+| 3 | `server/src/gateway.ts` 677 行 | `wc -l` | 拆出帧校验与状态机 |
+| 4 | `packages/protocol/src/index.ts` 1473 行 | `wc -l` | 按帧类型拆分，导出面不变 |
+
+## 另外观察到
+
+- `server/src/app.ts` 仍有 1 处 `console.warn`（route_not_found 兜底），已作为豁免登记在
+  `scripts/guard/policy.json`，上限 1，接入 logger 后删除（D5）。
+- 管理端用户正则接受 `/api/v1/admin/users/:id/device-key`（单数）但无处理器，命中后落入
+  `METHOD_NOT_FOUND`。死分支，建议拆分 `app.ts` 时删除。
+- CSP 的 `style-src 'unsafe-inline'` 与「禁止内联」的表述不一致，已登记 D6。
+
+## 未做
+
+- 未运行 `pnpm test:pg`：需要真实 PostgreSQL（CI 的 `server-postgres` job 覆盖）。
+- 未运行两个 walkthrough 脚本：需要双端进程与数据库。
+
+---
+
+# 第二轮（2026-11-10 晚）· 契约提权 + 定位固化
+
+## 结构性变更
+
+| # | 变更 | 证据 |
+|---|---|---|
+| 1 | 契约提权到项目根：\`root.ai.md\` 现在位于工作区根，仓库内的是生成镜像 | \`root-mirror\` 通过（397 行一致）；\`pnpm guard --sync\` 可重建 |
+| 2 | 新增 §0.1 定位与边界、§0.2 与上游的兼容契约 | 上游 = liguobao/ds-harness-remote（完整协议），本仓库 = 服务端最小面实现 |
+| 3 | 新增 §6.1 C1/C2/C3 不变量（O1–O7、M1–M5、K1–K6） | 逐条附 \`file:line\` 依据 |
+| 4 | 新增 guard 规则 \`fork-surface\`：每条 \`/api\` 路由必须有已登记的能力家族 | 11 条规则全绿 |
+| 5 | 路由提取从 \`/api/v1\` 放宽到 \`/api/\`，否则 \`/api/v2\` 家族会同时绕过两条规则 | 判别测试见下 |
+
+## P0（已关闭）
+
+### P0-1 安全文档与实现相反：设备密钥不是"只存摘要"
+
+- 证据：\`docs/security.md\` 原文「Device keys: only digests stored; plaintext shown once at creation」；
+  实现是 \`device_keys.secret\` 存 AES-256-GCM 密文，\`listDeviceKeys\` 对未吊销密钥返回明文
+  （\`server/src/store-pg.ts\` 的 \`sealSecret\`/\`openSecret\`），\`docs/auth.md\` 也写「stored encrypted so it can
+  be shown again」，用例 \`4c owner can reveal the key\` 断言可再次查看。
+- 影响：安全文档对「拿到数据库会不会泄漏密钥」给出错误结论；运维按此评估备份风险会低估。
+- 处置：按实现重写 \`docs/security.md\` 的 Credential handling；\`docs/operations.md\` 的备份说明改为「备份
+  含密封密钥与派生密钥，等同完整凭据」；契约 §6 S3 与 §6.1 K2 同步改写，并把该取舍写成显式债务闭环 D8。
+
+## P1（已关闭）
+
+### P1-5 管理端密钥接口：移除是有意的，文档是残留
+
+- 证据：\`server/tests/e2e-lifecycle.mjs:45-46\` 与 \`server/tests/http-smoke.mjs:97-99\` 断言
+  \`/api/v1/admin/users/:id/device-keys\` 返回 **404**，用例名为 \`admin key APIs are gone\` / \`admin cannot read
+  user keys\`；代码里没有该路由。上一轮删文档是对的，本轮补上「为什么」：这是 C3 的 K4 不变量。
+- 处置：契约 §6.1 的 K4 明确写死「管理员永远不可读取/铸造/吊销他人密钥」。
+
+## P2（新增）
+
+| # | 问题 | 退出条件 |
+|---|---|---|
+| D9 | 上游协议基线只有 \`fixtures/protocol/v1\` 作证，没有钉上游提交号 | 在 \`fixtures/protocol/v1/manifest.json\` 记录所对齐的 commit |
+
+## 判别测试（新规则必须会红）
+
+| 注入 | 结果 |
+|---|---|
+| 在 \`app.ts\` 插入 \`path === '/api/v2/workspaces'\` | \`fork-surface\` 红：路由没有能力归属；\`route-doc-sync\` 红：未文档化路由 |
+| 手改 \`repo/root.ai.md\`（追加一行） | \`root-mirror\` 红：镜像与项目根版本不一致 |
+| \`pnpm guard --sync\` | 镜像重建，\`root-mirror\` 恢复绿 |
+| 撤回全部注入 | 11 条规则全绿 |
+
+## 复核
+
+\`\`\`
+pnpm verify        # build → check → guard(11) → test(server 9 套 + protocol 94)
+\`\`\`
+
+---
+
+# 第三轮（2026-11-10 晚）· 设备密钥回显成为硬契约
+
+## 需求
+
+「设备密钥要求是可回显」——所有者必须能随时读回同一把密钥的明文。
+
+## 现状核对（实现已具备，契约与接口不完整）
+
+| 事实 | 证据 |
+|---|---|
+| 密钥以 AES-256-GCM 密封副本存库，可解密 | \`server/src/store-pg.ts\` 的 \`sealSecret\`/\`openSecret\` |
+| 所有者列表接口对未吊销密钥返回明文 | \`listDeviceKeys\` |
+| 用例断言可再次查看 | \`server/tests/e2e-lifecycle.mjs\` 的 \`4c owner can reveal the key\` |
+| 缺陷 1：接口没有 \`revealable\` 字段，客户端无法区分「不可回显」与「未加载」 | 旧响应仅有 \`key\` 或缺失 |
+| 缺陷 2：迁移遗留密钥（\`secret\` 为 NULL）在界面显示「不可查看（旧密钥）」，无操作指引 | \`web/src/pages/keys.js\` |
+| 缺陷 3：契约只写「所有者可再次查看」，没有可判定的判据 | 旧 §6.1 K2 |
+
+## 处置
+
+1. **契约**：§6.1 K2 改写为「所有者必须能回显，返回 \`key\` 且 \`revealable: true\`」；新增 **K7 回显契约**：未吊销 → 必带 \`key\`；已吊销或无密封副本 → \`revealable: false\` 且不带 \`key\`，界面必须说明并给「新建 + 吊销」路径，**不得静默留空**；新增密钥的代码路径不得造出不可回显的活密钥。§0.1 的 C3 同步加「可回显」。
+2. **接口**：\`listDeviceKeys\` 增加 \`revealable\`；\`key\` 仅在可回显时出现。\`store-pg.ts\` 保持 **799 行未破预算**（压缩两处 SQL 换行，不申请扩预算）。
+3. **界面**：\`keys.js\` 三态区分——未绑定密钥显示「—」、已吊销显示「已吊销，不可回显」、历史无密封副本显示「不可回显（旧密钥）· 请新建一把并吊销此钥」。
+4. **文档**：\`docs/api.md\` 的 Device 段新增 \`revealable\` 说明。
+5. **用例**（\`server/tests/store-smoke.mjs\`）：
+   - \`live key echoes back unchanged\`：明文逐字节一致；
+   - \`revoked key refuses to echo\`：吊销后无 \`key\`、\`revealable:false\`；
+   - \`legacy key is flagged, never blank\`：\`secret IS NULL\` 的行被标记而不是空白。
+
+## 债务
+
+| # | 问题 | 级别 | 退出条件 |
+|---|---|---|---|
+| D10 | 迁移遗留密钥只能标记，没有轮换入口（\`rotateDeviceKey\` 未暴露 HTTP） | P2 | 暴露轮换端点，或把「新建 + 吊销」做成一步引导 |
+
+## 复核
+
+\`\`\`
+pnpm verify   # guard 11 条 0 违反；protocol 94 tests；server 8 套（store 28 断言含 3 条回显用例）
+\`\`\`
+
+---
+
+# 第四轮（2026-11-10 晚）· 普通账号中继带宽全局限速 5 MiB/s
+
+## 需求
+
+服务端规划上对普通用户做全局限速，避免单个账号挤压业务：**合计 5 MiB/s**。
+
+## 现状
+
+只有三层限流：每用户请求/分钟（令牌桶）、每用户并发连接数、每 IP 匿名限流；外加每连接每秒帧数与字节的**防洪**闸门
+（\`server/src/gateway.ts\`，只防突发，不约束持续吞吐）。**没有跨连接的带宽预算**，一个账号开满 16 条连接即可跑满上行。
+
+## 处置
+
+| 层 | 改动 |
+|---|---|
+| 新模块 | \`server/src/relay-budget.ts\`：\`RelayBudget\` 令牌桶（容量 = 1 秒额度，按字节计），\`normalizeRelayBytesPerSecond\` 做范围归一（NaN/负数回落默认，0 = 关闭，上限 1 GiB/s） |
+| 网关 | 建立 \`relayBudget\`；\`relay\` 帧转发前扣减；账户角色在 hello 时解析并缓存到 peer（管理员豁免）；超限抛 \`RATE_LIMITED\`（关闭该连接而不是丢帧——丢帧会破坏对端顺序语义） |
+| 配置 | \`DSH_SERVER_RELAY_BYTES_PER_SECOND\`，默认 \`5242880\`；\`settings.ts\` → \`app.ts\` → \`GatewayOptions.relayBytesPerSecond\` |
+| 文档 | \`docs/configuration.md\` 新增 Relay budget 段；\`docs/security.md\` 说明"关闭而非丢帧"的原因 |
+| 契约 | §2 基线新增中继带宽行；§6.1 M4 升级为"三层限流 + 中继带宽"；§4.3 预算表登记 gateway 677→688 |
+| 用例 | 新增 \`server/tests/budget-smoke.mjs\`（14 条断言），已登记到 \`smoke-store.sh\` |
+
+## 设计取舍
+
+1. **共享桶 vs 每用户桶**：需求是"全局 5 MiB"，实现为服务端一个共享桶（管理员豁免）。代价是滥用者可以耗尽共享额度；缓解手段是日志里带 \`peerId\`，并保留升级为"全局 + 每用户子桶"的余地。
+2. **超限关闭而非丢帧**：中继帧带严格 counter 顺序，丢帧会让对端把它当协议违规。宁可断开并让客户端重连。
+3. **预算棘轮**：\`gateway.ts\` 677→688，按 §4.3 的正规流程登记（含退出条件 D11），不是静默上调；\`file-budget\` 现在会把预算说明打进门禁输出。
+
+## 债务
+
+| # | 问题 | 级别 | 退出条件 |
+|---|---|---|---|
+| D11 | \`gateway.ts\` 677→688；角色解析使消息处理器变为 async | P2 | 抽出 \`gateway-admission.ts\`（帧准入 + 带宽 + 角色），预算回落到 ≤660 |
+
+## 复核
+
+\`\`\`
+pnpm -r check   # protocol ✓ server ✓
+pnpm -r test    # budget 14 断言 + store 28 + http 59 + e2e 32/23/18/15/12
+\`\`\`
+
+---
+
+# 第五轮（2026-11-10 晚）· 中继带宽改为「账号共享权重、占用越多权重越低」
+
+## 需求
+
+多账号共享同一份中继带宽，单位时间内占用越多，权重越低（而不是先到先得）。
+
+## 为什么上一版不够
+
+上一版是**单个共享令牌桶**：谁先发谁拿到，一个账号开满连接就能把 5 MiB/s 吃光，其他人一起被限。这正是当时在评审里写下的已知代价（"滥用者可以耗尽共享额度"），本轮按需求把它换成加权分配。
+
+## 模型
+
+- 每个普通账号维护平滑吞吐 \`rate\`（时间衰减的 EWMA，约 1 秒窗口）。
+- 权重 \`weight = 1 / (1 + rate / B)\`：空闲 = 1，跑满 B = 0.5，跑 10×B ≈ 0.09。
+- 份额 \`share = B × weight / Σ weight\`：份额之和恒等于 B；**只有一个活跃账号时它拿满 B**（公平只在有人可被公平对待时才有意义）。
+- 每个账号持有 \`max(share, 64 KiB)\` 的桶，按 \`share\` 速率补充；新账号首次取用时装满一桶（允许一次 1 秒突发，而不是被瞬拒）。
+- 超出自身份额 → 以 \`RATE_LIMITED\` 关闭该连接（不丢帧：中继帧带严格 counter，丢帧会让对端判定协议违规）。
+- 静默 30 秒左右权重基本恢复；超过 256 个账号时惰性清理长期空闲状态。
+- 管理员豁免；\`DSH_SERVER_RELAY_BYTES_PER_SECOND=0\` 整体关闭。
+
+## 证据
+
+\`\`\`
+server/tests/budget-smoke.mjs（16 条断言）
+PASS sole account owns the budget
+PASS heavy account gets a smaller share :: 1502 < 98498
+PASS shares add up to the budget :: 100000.00000000001
+PASS weight recovers after idle time :: 9310 > 1502
+PASS long idle time almost fully restores the share :: 50000
+PASS a single oversized frame is admitted / the next frame is refused
+\`\`\`
+
+## 边界
+
+1. 权重是**相对**的：单账号场景下限速退化为"整份预算"，这是设计而非缺陷。
+2. 份额低到 \`B/(1+Σrate/B)\` 时仍可能小于一帧；桶的最小容量 64 KiB 与"超额按容量计费"保证不会出现永远无法通过的单帧。
+3. 关闭而非排队：真正的平滑需要给中继加发送队列（会改变顺序与内存模型），不在本轮范围；若后续要做，先补协议层的重传语义。
+
+---
+
+# 第六轮（2026-11-10 晚）· 中继发送队列：把"超限即断开"换成"超限即排队"
+
+## 需求
+
+给中继加发送队列。
+
+## 为什么必须排队而不是丢
+
+中继帧的 payload 带严格 counter，接收端把缺口当协议违规。所以"限速"只有三种实现：丢（破坏语义）、
+断开（用户体验差）、**排队（本轮）**。排队能保住顺序，代价是内存与延迟，因此队列必须有界。
+
+## 实现
+
+| 组件 | 行为 |
+|---|---|
+| \`server/src/relay-queue.ts\` | 每设备 FIFO：\`push\` 检查 32 帧 / 256 KiB 上限；\`drain\` 按当前可用额度逐帧投递，保持顺序；记录队首等待时长 |
+| 网关 | 超出账号份额 → \`enqueueRelay\` 而不是抛错；25ms 定时器 \`drainRelayQueues\` 投递；队列空即回收状态 |
+| 触发断开 | 只有两种：队列溢出（\`push\` 返回 false）、队首等待超过 15 秒（\`relay_queue_stalled\` 日志 + 断开） |
+| 兜底 | 投递回调包 try/catch：链路在此期间已死的帧不能把定时器炸掉 |
+| 清理 | \`disconnect\` 删除该设备队列；\`close\` 清空全部队列并停表 |
+
+## 证据
+
+\`\`\`
+server/tests/relay-queue-smoke.mjs
+PASS push accepts frames while there is room
+PASS drain stops when credit runs out
+PASS delivery preserves order :: [0]
+PASS remaining frame follows in order :: [0,1]
+PASS frame limit rejects the overflow
+PASS byte limit rejects the overflow
+PASS stalled queue reports a stall
+PASS clear drops everything
+\`\`\`
+
+## 预算
+
+\`gateway.ts\` 677 → 733（两次上调）。按 §4.3 登记并在门禁输出里可见；D11 升级为 **P1 并封顶**：
+截止 0.2.0 抽出 \`gateway-admission.ts\`，期间**禁止再次上调**。这是棘轮该有的样子——允许一次有理由的
+上调，但把"下一次"变成必须重构。
+
+## 已知边界
+
+- 队列是**每设备**的，份额是**每账号**的：一个账号多台设备时，各队列独立排队、共享同一份额，符合"账号共享权重"的语义。
+- 25ms 排空间隔带来最多 25ms 的额外延迟，低于一次人类可感知的交互阈值；不做自适应。
+- 排队不等于拥塞控制：发送端仍以原速写入，队列满后依然是断开。真正的端到端背压需要协议层暂停/恢复语义。
+
+---
+
+# 第七轮（2026-11-10 夜）· 关闭 D11：把帧准入 / 带宽 / 队列抽出网关
+
+## 触发
+
+`root.ai.md` §15 的唯一 P1 债务 D11：`gateway.ts` 两次上调到 733 行，契约封顶「截止 0.2.0，期间禁止再次上调」。
+继续开发前必须先拆，否则下一个网关改动只能靠第三次扩预算——那正是棘轮要禁止的事。
+
+## 变更
+
+| 文件 | 内容 |
+|---|---|
+| `server/src/gateway-admission.ts`（新，268 行） | `FrameAdmission`（每秒帧/字节窗口、掉线帧独立额度）、`DroppedLinkRegistry`（TTL/每主机/总量上限的墓碑表）、`RelayAdmission`（加权预算 + 每设备有序队列 + 25ms 排空）、`GatewayAdmission`（一个字段、一个生命周期） |
+| `server/src/gateway.ts` | 733 → 620 行（`wc -l`）。删除 4 个掉线链路方法、`enqueueRelay`/`drainRelayQueues`、闭包内的窗口计数；只保留 `admission.frameWindow()` 与 `admission.relay.*` 调用 |
+| `server/tests/admission-smoke.mjs`（新） | 24 条断言：窗口复位/上限、排队后不得越队、掉线帧额度、墓碑过期与驱逐、队列顺序、溢出拒绝、15s 停滞、forget/close |
+| `scripts/guard/policy.json` | `gateway.ts` 预算 733 → **621**（只降不升）；`budgetNotes` 记录来源 |
+| `root.ai.md` | §4.3 预算 621，并补充行数口径（readLines，含末尾空行）；D11 → 已关闭；D3 更新为 621 行（连接状态机仍在）；§2 Store 方法数修正为 69（57 公开 / 12 私有）；§2 测试栈 9→12 套（上一轮新增 budget/queue，本轮新增 admission；`pg-smoke` 条件执行）；M4 证据加入 `gateway-admission.ts`；**§5.7 与 §6.1 S3/K2 的矛盾修正**（原文仍写「设备密钥只存摘要」，与可回显实现相反） |
+| `fixtures/protocol/v1/manifest.json` | 钉上游提交（D9）：`14037e78f45e14f7a5ad56c2266944548def7e3d`，协议包 0.5.21；README 记录来源 |
+
+## 等价性论证（逐条对照旧实现）
+
+| 行为 | 旧位置 | 新位置 | 判据 |
+|---|---|---|---|
+| 每秒窗口复位 + `frames+dropped` 共享上限 | `gateway.ts` message 闭包 | `FrameAdmission.begin/count/countDropped` | 保留原短路顺序（超帧数时不再累加字节） |
+| 掉线链路 300s 墓碑、每主机 64、总量 16384、驱逐时回写 `evictedTombstoneUntil` | `pruneDroppedLinks/evictDroppedLink/recordDroppedLink/isDroppedLinkFrame` | `DroppedLinkRegistry` | `onEvict` 回调把两个 peer 的墓碑时间取最大值 |
+| 加权预算扣减、队列 `take` 用账号 ownerId | `enqueueRelay` 闭包 | `QueueEntry` | 每设备队列捕获创建时的 ownerId（与旧闭包一致） |
+| 队列顺序、32 帧/256 KiB 上限、溢出抛 `RATE_LIMITED` | `RelayQueue` + `enqueueRelay` | 不变，`RelayAdmission.enqueue` 返回 false，网关抛错 | 新增断言 `a queue overflow is refused at 32 frames` |
+| 队首 >15s → 记录 `relay_queue_stalled` 并断开 | `drainRelayQueues` | `onStalled` 回调 | 断言 `a stalled queue reports and is dropped` |
+| 投递前校验 peer 身份，异常不断定时器 | 旧 `deliver` 闭包 | `enqueue(..., replay)` 捕获同一 peer 对象 | 回调内 `this.peers.get(active.id) !== active` 直接返回 |
+| `disconnect` 删队列、`close` 清空并停表 | 网关 | `forget` / `GatewayAdmission.close` | 断言 `forget drops a device queue`、`close is idempotent` |
+
+## 门禁证据
+
+```
+$ pnpm verify
+build ✓  check ✓  guard: 11 rules, 0 violation(s)  test ✓
+  file-budget: gateway.ts — 733→621：抽出 gateway-admission.ts（帧窗口 / 带宽 / 队列），D11 已关闭；预算 621 只降不升
+  protocol: 9 files / 94 tests passed
+  server: admission 24 · budget 16 · queue 11 · store 28 · runtime 16 · http 59 ·
+          lifecycle 32 · auth 23 · oidc 18 · account 15 · journey 12  = 254 passed, 0 failed
+合计 348 条断言全绿；build+check+guard+test 耗时 65 s
+```
+
+**未跑**：`pnpm test:pg`（需要真实 PostgreSQL，本机未起库；本轮不改 SQL 语义，但 `store-pg.ts` 有既有未提交改动，
+建议合并前在 CI 的 server-postgres job 复核）。**未跑**：协议双端走查（本轮未改 `packages/protocol`）。
+
+## 判别测试（实际执行，非口头声明）
+
+1. **预算棘轮**：临时把 `policy.json` 的 `gateway.ts` 预算降到 620，`file-budget` 变红：
+
+   ```
+   ✗ server/src/gateway.ts:621 621 行，超出预算 620 行 (+ 1)
+   guard: 1 rules, 1 violation(s)
+   ```
+
+   恢复 621 后 `1 rules, 0 violation(s)`。
+2. **队列上限**：在编译产物 `server/.smoke/build/relay-queue.js` 中移除帧数上限判断，重跑 admission-smoke：
+
+   ```
+   FAIL a queue overflow is refused at 32 frames :: 0
+   FAIL queued frames drain when credit returns :: []
+   ```
+
+   恢复后 `24 passed, 0 failed`。证明新增断言对「队列无界」有判别力。
+
+## 问题分级
+
+- P0：无。
+- P1：无（D11 本轮关闭；§5.7 的契约自相矛盾按 P1 当次修正）。
+- P2：D10 仍开放（无密封副本的旧密钥没有轮换入口）；`gateway.ts` 仍含连接状态机（D3）。
+
+## 审核团
+
+两个独立只读评审（reviewer-diff / reviewer-contract）并行复核，结论见各自评审文件；未通过前不提交。
+
+## 独立评审发现的 P1（已修）
+
+`reviewer-diff2` 拒绝上一版，指出**排队帧会被后续小帧越过**：
+
+- 现场：`gateway.ts` 先 `relay.take()`，只有额度不足才入队。若设备已有待发队列，而预算恰好回补了
+  一小段额度，新帧会直接 `handle()` 前进，排队中的旧帧随后到达时 `counter` 已过期 →
+  `INVALID_MESSAGE` → 重放守卫断开整条控制连接。这正是队列注释声称要避免的计数器缺口。
+- 修法：新增 `RelayAdmission.shouldQueue(peerId, ownerId, bytes)`——**队列非空即入队**，只有无队列且
+  有额度才直发。网关条件改为 `shouldQueue(...)`。
+- 回归：`admission-smoke` 新增两条——`a device with a pending frame keeps queueing after credit returns`、
+  `a later frame cannot overtake the queued one`（顺序 `[0,1]`）。
+
+同时修掉两个 P2：
+
+| 问题 | 修法 |
+|---|---|
+| 排队帧的链路已死时，重放 `CONNECTION_NOT_FOUND` 被升级为断开整个控制连接 | 重放捕获只在**不是** `CONNECTION_NOT_FOUND` 时断开；死链的排队帧视为过期流量 |
+| hello 分支 `await findUserById` 后未复检状态，且同一 chunk 的第二个 hello 可重入 | 增加 `helloInFlight` 一次性门；await 后复检 `state === 'awaiting_hello'`，否则直接返回 |
+
+剩余 P2（接受）：hello 解析管理员角色需要一次 `findUserById` 查询；查询失败会以 `INVALID_MESSAGE` 关闭连接。
+角色只用于带宽豁免，代价可接受；若后续引入用户缓存，应改为缓存读取。
+
+## 独立复核
+
+- `reviewer-contract`：**APPROVE**（D9 关闭、Store 69/57/12、12 套测试、行数口径、D11 677→621 均逐条命令复核；guard 11/11）。
+- `reviewer-diff2`：首轮 **REJECT**（上述 P1 + 3 个 P2）；修复后 **APPROVE**——counter-gap 关闭，admission 24/24、queue 11/11、budget 16/16，源码级探针确认「有队列即排队、每帧只扣一次」。遗留两条 P3（注释指向旧行为、排队帧在投递时校验 link 状态），均已记录；注释已修。

@@ -18,9 +18,12 @@ import {
 import { ApiError, Store } from './store-pg.js'
 import { Logger, type LogLevel } from './logger.js'
 import { normalizeGatewayOptions, normalizeMaxFramesPerSec, type GatewayTimingOptions } from './config.js'
+import { DroppedLinkRegistry, GatewayAdmission } from './gateway-admission.js'
 
 export interface GatewayOptions extends GatewayTimingOptions {
   maxFramesPerSec?: number
+  /** Server-wide relay budget in bytes per second; ordinary accounts only. 0 disables. */
+  relayBytesPerSecond?: number
   logLevel?: LogLevel
   logger?: Logger
   /** Advertise `transport.turn` (and accept TURN credential requests). */
@@ -28,22 +31,13 @@ export interface GatewayOptions extends GatewayTimingOptions {
 }
 
 /**
- * Connection lifecycle. Frames are only ever interpreted in `awaiting_hello`
- * or `authenticated`; `closing`/`closed` exists so a hello that loses the race
- * against the handshake deadline can never authenticate, register a peer,
- * touch the store or replace a healthy socket.
+ * Frames are only interpreted in `awaiting_hello` or `authenticated`;
+ * `closing`/`closed` prevents a late hello from registering a peer.
  */
 type ConnectionState = 'awaiting_hello' | 'authenticated' | 'closing' | 'closed'
 
-type Peer = { ws: WebSocket; id: string; role: 'host' | 'client'; capabilities: string[]; version: string; lastPong: number; nonce?: string; evictedTombstoneUntil?: number }
+type Peer = { ws: WebSocket; id: string; role: 'host' | 'client'; accountRole: 'admin' | 'user'; ownerId: string; capabilities: string[]; version: string; lastPong: number; nonce?: string; evictedTombstoneUntil?: number }
 type Link = { id: string; host: string; client: string; stage: 'pending' | 'accepted' | 'handshake' | 'ready'; created: number; counters: Map<string, number>; preferredTransports: TransportName[]; iceCandidates: number }
-type DroppedLink = { host: string; client: string; expiresAt: number; droppedFrames: number }
-
-/** Keep tombstones long enough for late in-flight frames to drain without CONNECTION_NOT_FOUND storms. */
-const DROPPED_LINK_TTL_MS = 300_000
-const MAX_DROPPED_LINKS_PER_HOST = 64
-const MAX_DROPPED_LINKS = 16_384
-
 /** Protocol v1 default: at most 256 ICE candidates per logical connection. */
 export const MAX_ICE_CANDIDATES_PER_CONNECTION = 256
 /** Mirrors docs/protocol.md: Clients use max(server, local) and default to 12 s. */
@@ -108,7 +102,19 @@ function errorCode(error: unknown): string | undefined {
 export class Gateway {
   readonly peers = new Map<string, Peer>()
   private links = new Map<string, Link>()
-  private droppedLinks = new Map<string, DroppedLink>()
+  /** Tombstones for links that just died: late frames are swallowed, not answered. */
+  private readonly droppedLinks = new DroppedLinkRegistry({
+    isLive: id => this.links.has(id),
+    onEvict: (peerId, until) => {
+      const peer = this.peers.get(peerId)
+      if (peer) peer.evictedTombstoneUntil = Math.max(peer.evictedTombstoneUntil ?? 0, until)
+    },
+    onFirstDroppedFrame: (peerId, connectionId) => this.logger.debug('ws_stale_link_frames_dropped', {
+      peerId,
+      role: this.peers.get(peerId)?.role,
+      connectionId: safeText(connectionId),
+    }),
+  })
   private wss = new WebSocketServer({ noServer: true, maxPayload: MAX_RELAY_FRAME_BYTES, perMessageDeflate: false })
   private heartbeat: ReturnType<typeof setInterval>
   private closed = false
@@ -118,6 +124,8 @@ export class Gateway {
   readonly heartbeatDisconnectMs: number
   readonly forceTerminateGraceMs: number
   readonly maxFramesPerSec: number
+  /** Frame windows, weighted relay bandwidth and per-device send queues. */
+  private readonly admission: GatewayAdmission
   readonly logger: Logger
 
   constructor(server: Server, private store: Store, origin: string | (() => string), options: GatewayOptions = {}) {
@@ -131,6 +139,14 @@ export class Gateway {
     this.forceTerminateGraceMs = timing.forceTerminateGraceMs
     this.maxFramesPerSec = normalizeMaxFramesPerSec(options.maxFramesPerSec)
     this.logger = options.logger ?? new Logger('gateway', options.logLevel ?? 'info')
+    this.admission = new GatewayAdmission(this.maxFramesPerSec, {
+      relayBytesPerSecond: options.relayBytesPerSecond,
+      // 25ms is below the smallest meaningful relay latency and cheap to run.
+      onStalled: (peerId, info) => {
+        this.logger.warn('relay_queue_stalled', { peerId, ...info })
+        this.disconnect(peerId, 'RATE_LIMITED')
+      },
+    })
     this.turnEnabled = options.turnEnabled ?? false
 
     store.onInvalidate = id => this.disconnect(id, 'AUTH_INVALID')
@@ -182,82 +198,13 @@ export class Gateway {
       for (const link of this.links.values()) {
         if (link.stage !== 'ready' && Date.now() - link.created > 30_000) this.drop(link, 'CONNECTION_FAILED')
       }
-      this.pruneDroppedLinks(Date.now())
+      this.droppedLinks.prune()
     }, this.heartbeatIntervalMs)
     this.heartbeat.unref()
   }
 
-  private pruneDroppedLinks(now: number): void {
-    for (const [id, entry] of this.droppedLinks) {
-      if (entry.expiresAt <= now) this.droppedLinks.delete(id)
-    }
-  }
-
-  private evictDroppedLink(id: string, entry: DroppedLink, now: number): void {
-    this.droppedLinks.delete(id)
-    if (entry.expiresAt <= now) return
-    for (const peerId of [entry.host, entry.client]) {
-      const p = this.peers.get(peerId)
-      if (p) p.evictedTombstoneUntil = Math.max(p.evictedTombstoneUntil ?? 0, entry.expiresAt)
-    }
-  }
-
-  private recordDroppedLink(link: Link): void {
-    const now = Date.now()
-    this.pruneDroppedLinks(now)
-    this.droppedLinks.delete(link.id)
-    let hostCount = 0
-    let oldestForHost: [string, DroppedLink] | undefined
-    for (const [id, entry] of this.droppedLinks) {
-      if (entry.host === link.host) {
-        if (oldestForHost === undefined) oldestForHost = [id, entry]
-        hostCount += 1
-      }
-    }
-    if (hostCount >= MAX_DROPPED_LINKS_PER_HOST && oldestForHost !== undefined) {
-      this.evictDroppedLink(oldestForHost[0], oldestForHost[1], now)
-    }
-    while (this.droppedLinks.size >= MAX_DROPPED_LINKS) {
-      const oldest = this.droppedLinks.entries().next().value as [string, DroppedLink] | undefined
-      if (oldest === undefined) break
-      this.evictDroppedLink(oldest[0], oldest[1], now)
-    }
-    this.droppedLinks.set(link.id, {
-      host: link.host,
-      client: link.client,
-      expiresAt: now + DROPPED_LINK_TTL_MS,
-      droppedFrames: 0,
-    })
-  }
-
-  private isDroppedLinkFrame(peer: Peer, frame: ControlFrame): boolean {
-    if (frame.type === 'ping' || frame.type === 'pong' || frame.type === 'connect.request') return false
-    const p = frame.payload as Record<string, unknown>
-    const id = p.connectionId
-    if (typeof id !== 'string' || this.links.has(id)) return false
-    const now = Date.now()
-    const dropped = this.droppedLinks.get(id)
-    if (!dropped) {
-      return peer.evictedTombstoneUntil !== undefined && now < peer.evictedTombstoneUntil
-    }
-    if (dropped.expiresAt <= now) {
-      this.droppedLinks.delete(id)
-      return false
-    }
-    if (peer.id !== dropped.host && peer.id !== dropped.client) return false
-    dropped.droppedFrames += 1
-    if (dropped.droppedFrames === 1) {
-      this.logger.debug('ws_stale_link_frames_dropped', {
-        peerId: peer.id,
-        role: peer.role,
-        connectionId: safeText(id),
-      })
-    }
-    return true
-  }
-
   droppedLinkFrameCount(connectionId: string): number {
-    return this.droppedLinks.get(connectionId)?.droppedFrames ?? 0
+    return this.droppedLinks.countFor(connectionId)
   }
 
   private send(peer: Peer, frame: ControlFrame): void {
@@ -267,7 +214,7 @@ export class Gateway {
   }
   private drop(link: Link, code: string): void {
     this.links.delete(link.id)
-    this.recordDroppedLink(link)
+    this.droppedLinks.remember(link)
     for (const id of [link.host, link.client]) {
       const p = this.peers.get(id)
       if (p && (p.role === 'client' || modernHost(p.version))) this.send(p, createControlFrame('error', { code, message: code, connectionId: link.id, retryable: true }))
@@ -276,6 +223,7 @@ export class Gateway {
   disconnect(id: string, code: string): void {
     const peer = this.peers.get(id)
     this.peers.delete(id)
+    this.admission.relay.forget(id)
     for (const link of this.links.values()) if (link.host === id || link.client === id) this.drop(link, code)
     if (!peer) return
     this.logger.info('ws_peer_disconnected', { peerId: id, code })
@@ -315,6 +263,7 @@ export class Gateway {
     let peer: Peer | undefined
     let deadline: ReturnType<typeof setTimeout> | undefined
     let graceTimer: ReturnType<typeof setTimeout> | undefined
+    let helloInFlight = false
 
     // Timer cleanup is idempotent: every path (auth, timeout, close) can call
     // it any number of times without leaving a scheduled callback behind.
@@ -367,7 +316,7 @@ export class Gateway {
     }, this.helloTimeoutMs)
     deadline.unref()
 
-    let windowStart = Date.now(), frames = 0, bytes = 0, droppedFrames = 0, droppedBytes = 0
+    const admission = this.admission.frameWindow()
     ws.on('error', (error) => {
       // Error messages can embed payload fragments: log the class and errno only.
       this.logger.warn('ws_socket_error', {
@@ -388,7 +337,7 @@ export class Gateway {
       })
       if (peer && this.peers.get(peer.id) === peer) this.disconnect(peer.id, 'CONNECTION_FAILED')
     })
-    ws.on('message', (raw, binary) => {
+    ws.on('message', async (raw, binary) => {
       // Frames arriving after the handshake deadline are dropped before any
       // parsing, authentication or store access can happen.
       if (state !== 'awaiting_hello' && state !== 'authenticated') return
@@ -398,40 +347,30 @@ export class Gateway {
         if (binary) throw new ApiError('INVALID_MESSAGE')
         const text = raw.toString()
         const frameBytes = Buffer.byteLength(text)
-        if (Date.now() - windowStart >= 1000) {
-          windowStart = Date.now()
-          frames = 0
-          bytes = 0
-          droppedFrames = 0
-          droppedBytes = 0
-        }
-        const maxDroppedFrames = Math.max(this.maxFramesPerSec * 2, 1024)
-        const maxDroppedBytes = 8 * MAX_RELAY_FRAME_BYTES
-        if (frames + droppedFrames + 1 > this.maxFramesPerSec + maxDroppedFrames
-          || bytes + droppedBytes + frameBytes > 16 * MAX_RELAY_FRAME_BYTES + maxDroppedBytes) {
-          throw new ApiError('RATE_LIMITED')
-        }
-        if (state === 'awaiting_hello' && (++frames > this.maxFramesPerSec || (bytes += frameBytes) > 16 * MAX_RELAY_FRAME_BYTES)) {
-          throw new ApiError('RATE_LIMITED')
-        }
+        if (!admission.begin(frameBytes)) throw new ApiError('RATE_LIMITED')
+        if (state === 'awaiting_hello' && !admission.count(frameBytes)) throw new ApiError('RATE_LIMITED')
         const envelope = JSON.parse(text) as { v?: unknown }
         if (envelope && envelope.v !== 1) throw new ApiError('UNSUPPORTED_VERSION')
         frame = decodeControlFrame(text)
         if (state === 'awaiting_hello') {
           if (frame.type !== 'hello') throw new ApiError('AUTH_REQUIRED')
+          // One hello at a time: a second frame must not overwrite the peer.
+          if (helloInFlight) return
+          helloInFlight = true
           const p = frame.payload as HelloPayload
           const device = this.store.authenticate(p.accessToken).descriptor
           if (device.deviceId !== p.deviceId || device.role !== p.role) throw new ApiError('AUTH_INVALID')
-          // Per-user concurrent connection cap (admins are not special here;
-          // the cap protects the process, not a privilege tier).
+          // Per-user connection cap: it protects the process, not a privilege tier.
           if (!p.protocols.includes(1)) throw new ApiError('UNSUPPORTED_VERSION')
-          // Re-assert the state: if the deadline fired while credentials were
-          // checked, the timeout wins and none of the side effects below run.
+          // The deadline wins over a late hello: no side effect below may run.
+          if (state !== 'awaiting_hello') return
+          const ownerId = this.store.get(device.deviceId).userId
+          const owner = await this.store.findUserById(ownerId)
+          // Re-assert after the await: the hello deadline may have fired meanwhile.
           if (state !== 'awaiting_hello') return
           // Replace our own previous socket before counting, otherwise a user
           // at the cap can never reconnect.
           this.disconnect(device.deviceId, 'CONNECTION_REPLACED')
-          const ownerId = this.store.get(device.deviceId).userId
           let sameUser = 0
           for (const other of this.peers.values()) {
             try { if (this.store.get(other.id).userId === ownerId) sameUser += 1 } catch { /* revoked peer still counts */ sameUser += 1 }
@@ -439,10 +378,8 @@ export class Gateway {
           if (sameUser >= this.store.connectionLimit) throw new ApiError('RATE_LIMITED', 429)
           state = 'authenticated'
           clearDeadline()
-          // Keep the negotiated set (what hello.ack advertises), so a link can
-          // never coordinate a transport this Server did not offer — e.g. TURN
-          // while no TURN deployment is configured.
-          peer = { ws, id: device.deviceId, role: device.role, capabilities: this.negotiatedCapabilities(p.capabilities), version: p.clientVersion ?? device.clientVersion, lastPong: Date.now() }
+          // hello.ack advertises only what this Server can actually coordinate.
+          peer = { ws, id: device.deviceId, role: device.role, accountRole: owner?.role === 'admin' ? 'admin' : 'user', ownerId, capabilities: this.negotiatedCapabilities(p.capabilities), version: p.clientVersion ?? device.clientVersion, lastPong: Date.now() }
           this.peers.set(peer.id, peer)
           this.store.touch(peer.id, p.clientVersion, p.harnessVersion)
           this.logger.info('ws_hello_authenticated', {
@@ -467,14 +404,23 @@ export class Gateway {
         if (frame.type === 'hello') throw new ApiError('INVALID_MESSAGE')
         if (!peer || this.peers.get(peer.id) !== peer) throw new ApiError('AUTH_INVALID')
         this.store.get(peer.id)
-        if (this.isDroppedLinkFrame(peer, frame)) {
-          if (++droppedFrames > maxDroppedFrames || (droppedBytes += frameBytes) > maxDroppedBytes) {
-            throw new ApiError('RATE_LIMITED')
-          }
+        if (this.droppedLinks.matches(peer, frame)) {
+          if (!admission.countDropped(frameBytes)) throw new ApiError('RATE_LIMITED')
           return
         }
-        if (++frames > this.maxFramesPerSec || (bytes += frameBytes) > 16 * MAX_RELAY_FRAME_BYTES) {
-          throw new ApiError('RATE_LIMITED')
+        if (!admission.count(frameBytes)) throw new ApiError('RATE_LIMITED')
+        // Relay frames wait in order; dropping one would break the peer's counters.
+        if (frame.type === 'relay' && peer.accountRole !== 'admin' && this.admission.relay.shouldQueue(peer.id, peer.ownerId, frameBytes)) {
+          const active = peer
+          if (!this.admission.relay.enqueue(active.id, active.ownerId, frame, frameBytes, next => {
+            if (this.peers.get(active.id) !== active) return
+            try { this.handle(active, next) } catch (error) {
+              // The link may have died while the frame waited: that is stale
+              // traffic, not a reason to kill the whole control connection.
+              if (!(error instanceof ApiError && error.code === 'CONNECTION_NOT_FOUND')) this.disconnect(active.id, 'INVALID_MESSAGE')
+            }
+          })) throw new ApiError('RATE_LIMITED')
+          return
         }
         this.handle(peer, frame)
       } catch (error) {
@@ -576,7 +522,7 @@ export class Gateway {
       if (peer.id !== link.host || link.stage !== 'pending') throw new ApiError('INVALID_MESSAGE')
       if (frame.type === 'connect.rejected') {
         this.links.delete(link.id)
-        this.recordDroppedLink(link)
+        this.droppedLinks.remember(link)
       }
       else link.stage = 'accepted'
       this.send(other, frame)
@@ -656,12 +602,10 @@ export class Gateway {
     if (this.closed) return
     this.closed = true
     clearInterval(this.heartbeat)
+    this.admission.close()
     this.logger.info('ws_gateway_closing', { clientCount: this.wss.clients.size })
     for (const ws of this.wss.clients) {
-      // Give resumable clients an explicit, unambiguous shutdown signal. A
-      // process restart is different from heartbeat failure (4001) and from
-      // replacement/authentication failures, so clients can retain only the
-      // bounded lease-backed session state.
+      // An explicit shutdown code lets resumable clients keep only their bounded lease.
       try {
         if (ws.readyState === WebSocket.OPEN) ws.close(SERVER_SHUTDOWN_CLOSE_CODE, SERVER_SHUTDOWN_CLOSE_REASON)
         else ws.terminate()

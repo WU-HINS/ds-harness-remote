@@ -41,7 +41,9 @@ and refuses to run as a second writer (`503 INSTANCE_LOCKED`). Run exactly one r
 docker compose exec -T postgres pg_dump -U dsh dsh | gzip > dsh-$(date +%F).sql.gz
 ```
 
-The dump contains OIDC client secrets, SMTP passwords and the device-key digests — store it like a key.
+The dump contains OIDC client secrets, SMTP passwords, the device-key digests and the sealed device keys —
+together with the server secret in the same dump they are recoverable, so a backup is a full credential set.
+Store it like a key, and treat any copy of it as a compromise if it leaks.
 
 ## Upgrade
 

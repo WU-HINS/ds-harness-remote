@@ -148,7 +148,7 @@ export function createApp(settings: Settings, deps: { pool?: Pool; mailer?: Mail
   let listening = false
   const store = new Store(pool)
   const server = createServer({ requestTimeout: 30_000, headersTimeout: 15_000 })
-  const gateway = new Gateway(server, store as any, () => runtime.current.server.publicUrl || (settings.publicUrlExplicit ? settings.publicUrl.origin : ''), { turnEnabled: () => Boolean(runtime.current.ice.turnUrls.length) })
+  const gateway = new Gateway(server, store as any, () => runtime.current.server.publicUrl || (settings.publicUrlExplicit ? settings.publicUrl.origin : ''), { turnEnabled: () => Boolean(runtime.current.ice.turnUrls.length), relayBytesPerSecond: settings.relayBytesPerSecond })
   const runtime = new Runtime(store, settings)
   let cachedMailer: { key: string; mailer: Mailer } | undefined
   const mailer = (): Mailer | undefined => {

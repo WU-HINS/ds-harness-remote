@@ -1,0 +1,50 @@
+{
+  "fixtureFormat": "dsh-remote.protocol-conformance",
+  "fixtureFormatVersion": 1,
+  "protocolVersion": 1,
+  "suites": [
+    {
+      "name": "control-envelope",
+      "path": "control/envelope.json"
+    },
+    {
+      "name": "control-hello",
+      "path": "control/hello.json"
+    },
+    {
+      "name": "control-connect",
+      "path": "control/connect.json"
+    },
+    {
+      "name": "control-handshake",
+      "path": "control/handshake.json"
+    },
+    {
+      "name": "control-relay",
+      "path": "control/relay.json"
+    },
+    {
+      "name": "protocol-errors",
+      "path": "control/errors.json"
+    },
+    {
+      "name": "control-limits",
+      "path": "control/limits.json"
+    },
+    {
+      "name": "capability-negotiation",
+      "path": "negotiation/capabilities.json"
+    },
+    {
+      "name": "account-authorization",
+      "path": "account/authorization.json"
+    }
+  ],
+  "upstream": {
+    "repository": "https://github.com/liguobao/ds-harness-remote",
+    "commit": "14037e78f45e14f7a5ad56c2266944548def7e3d",
+    "commitResolvedAt": "2026-11-10",
+    "protocolPackageVersion": "0.5.21",
+    "note": "Frame/error semantics mirror this commit (constants checked against packages/protocol/src/index.ts at that commit). These fixtures are this repository's own conformance baseline, not a copied test suite."
+  }
+}

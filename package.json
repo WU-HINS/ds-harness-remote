@@ -13,9 +13,11 @@
     "dev": "pnpm --filter @dsh-remote/web build && pnpm --filter @dsh-remote/server dev",
     "build": "pnpm --filter @dsh-remote/protocol build && pnpm --filter @dsh-remote/web build && pnpm --filter @dsh-remote/server build",
     "check": "pnpm -r check",
-    "test": "pnpm --filter @dsh-remote/server test",
+    "test": "pnpm -r test",
     "test:pg": "pnpm --filter @dsh-remote/server test:pg",
     "start": "pnpm --filter @dsh-remote/server start",
-    "build:web": "pnpm --filter @dsh-remote/web build"
+    "build:web": "pnpm --filter @dsh-remote/web build",
+    "guard": "node scripts/guard/index.mjs",
+    "verify": "pnpm build && pnpm -r check && pnpm guard && pnpm test"
   }
 }

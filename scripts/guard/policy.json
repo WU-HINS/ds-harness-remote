@@ -1,0 +1,83 @@
+{
+  "//": "单一真源：所有门禁阈值、预算与豁免都在这里。改这里必须同时改 root.ai.md §门禁。",
+  "budgets": {
+    "server/src/app.ts": 1090,
+    "server/src/store-pg.ts": 799,
+    "server/src/gateway.ts": 621,
+    "packages/protocol/src/index.ts": 1473
+  },
+  "budgetedAbove": 600,
+  "sqlFiles": [
+    "server/src/schema.ts",
+    "server/src/store-pg.ts"
+  ],
+  "sqlExemptions": [
+    {
+      "file": "server/src/app.ts",
+      "pattern": "SELECT 1",
+      "reason": "就绪探针，无表访问"
+    }
+  ],
+  "consoleFiles": [
+    "server/src/logger.ts",
+    "server/src/main.ts",
+    "server/src/config.ts"
+  ],
+  "consoleExemptions": [
+    {
+      "file": "server/src/app.ts",
+      "max": 1,
+      "reason": "route_not_found 兜底，接 logger 后删除"
+    }
+  ],
+  "routeAllowlist": [],
+  "docRoots": [
+    "README.md",
+    "root.ai.md",
+    "../root.ai.md",
+    "AGENTS.md",
+    "docs"
+  ],
+  "sourceRoots": [
+    "server/src",
+    "web/src",
+    "packages/protocol/src"
+  ],
+  "testRoots": [
+    "server/tests",
+    "packages/protocol/tests"
+  ],
+  "routeGroups": [
+    {
+      "prefix": "/api/v1/auth",
+      "capability": "C1 OIDC + 账号认证（上游协议认证面）"
+    },
+    {
+      "prefix": "/api/v1/setup",
+      "capability": "首次初始化（一次性 setup key）"
+    },
+    {
+      "prefix": "/api/v1/admin",
+      "capability": "C2 多用户管理（管理员）"
+    },
+    {
+      "prefix": "/api/v1/account",
+      "capability": "C3 单用户多密钥 / 设备自助"
+    },
+    {
+      "prefix": "/api/v1/devices",
+      "capability": "设备注册与中继（上游协议数据面）"
+    },
+    {
+      "prefix": "/api/v1/me",
+      "capability": "设备自述"
+    },
+    {
+      "prefix": "/api/v1/turn",
+      "capability": "ICE 凭据（WebRTC 直连）"
+    }
+  ],
+  "budgetNotes": {
+    "server/src/gateway.ts": "733→621：抽出 gateway-admission.ts（帧窗口 / 带宽 / 队列），D11 已关闭；预算 621 只降不升"
+  }
+}

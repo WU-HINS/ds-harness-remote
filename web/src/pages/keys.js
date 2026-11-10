@@ -17,9 +17,11 @@ export function init() {
         '<td data-th="标签"><span class="strong">' + dshEsc(label(k.label)) + '</span></td>' +
         '<td data-th="设备数"><span class="badge">' + k.deviceCount + '</span></td>' +
         '<td data-th="状态">' + (k.revoked ? '<span class="badge off">已吊销</span>' : '<span class="badge ok">正常</span>') + '</td>' +
-        '<td data-th="密钥">' + (k.key
-          ? '<span class="mono small keymask" data-key="' + dshEsc(k.key) + '">••••••••••••</span> <button class="btn ghost sm" data-a="reveal">显示</button><button class="btn ghost sm" data-a="copy" data-key="' + dshEsc(k.key) + '">复制</button>'
-          : '<span class="muted small">不可查看（旧密钥）</span>') + '</td>' +
+        '<td data-th="密钥">' + (k.id === 'unbound'
+          ? '<span class="muted small">—</span>'
+          : k.revealable === false
+            ? '<span class="muted small">' + (k.revoked ? '已吊销，不可回显' : '不可回显（旧密钥）· 请新建一把并吊销此钥') + '</span>'
+            : '<span class="mono small keymask" data-key="' + dshEsc(k.key) + '">••••••••••••</span> <button class="btn ghost sm" data-a="reveal">显示</button><button class="btn ghost sm" data-a="copy" data-key="' + dshEsc(k.key) + '">复制</button>') + '</td>' +
         '<td data-th="创建时间" class="muted small">' + (k.createdAt ? dshEsc(new Date(k.createdAt).toLocaleString()) : '—') + '</td>' +
         '<td data-th="操作">' + (k.revoked || k.id === 'unbound' ? '<span class="muted small">—</span>'
           : '<button class="btn danger sm" data-a="revoke" data-id="' + dshEsc(k.id) + '" data-count="' + k.deviceCount + '" aria-label="吊销密钥 ' + dshEsc(k.label) + '">吊销</button>') + '</td></tr>').join('')

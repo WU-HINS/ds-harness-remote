@@ -34,6 +34,7 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - run: pnpm build
       - run: pnpm -r check
+      - run: pnpm guard
       - run: pnpm test
 
   server-postgres:

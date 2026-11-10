@@ -36,6 +36,9 @@ cp tests/*.mjs "$OUT/"
 # pg-smoke 仅在设置 DATABASE_URL 时运行
 if [ -n "${DATABASE_URL:-}" ]; then node "$OUT/pg-smoke.mjs"; fi
 cd "$OUT"
+node budget-smoke.mjs
+node relay-queue-smoke.mjs
+node admission-smoke.mjs
 node store-smoke.mjs
 node runtime-smoke.mjs
 node http-smoke.mjs
