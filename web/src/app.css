@@ -224,3 +224,19 @@ to{background-position:-200% 0}
 .step-body{flex:1;min-width:0}
 .connect-row{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:10px 12px;border:1px solid hsl(var(--line));border-radius:10px;background:hsl(var(--surface-2))}
 .connect-row .mono{overflow-wrap:anywhere}
+
+/* Phones: rows become cards, each cell labelled from its data-th. */
+@media (max-width:560px){
+  .wrap{min-width:0}
+  .card{min-width:0}
+  .table-scroll{overflow-x:hidden}
+  .table-scroll .table,.table-wrap .table{display:block;min-width:0;width:100%;border:0}
+  .table thead{display:none}
+  .table tbody{display:flex;flex-direction:column;gap:10px}
+  .table tr{display:block;border:1px solid hsl(var(--line));border-radius:12px;padding:12px 14px;background:hsl(var(--surface))}
+  .table td{display:flex;align-items:center;justify-content:space-between;gap:14px;border:0;padding:5px 0;text-align:right}
+  .table td::before{content:attr(data-th);color:hsl(var(--muted));font-size:12px;flex:none}
+  .table td[data-th="操作"]{padding-top:10px;margin-top:6px;border-top:1px solid hsl(var(--line))}
+  .table td[data-th="操作"]::before{content:''}
+  .table td .actions{justify-content:flex-end}
+}

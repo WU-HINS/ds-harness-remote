@@ -301,7 +301,7 @@ export class Store {
     return listed
   }
 
-  async revokeDeviceKey(keyId: string, userId?: string): Promise<void> {
+  async revokeDeviceKey(keyId: string, userId?: string): Promise<number> {
     if (keyId === 'unbound') throw new ApiError('INVALID_MESSAGE', 400)
     const key = await this.pool.query('SELECT * FROM device_keys WHERE id = $1', [keyId])
     const row = key.rows[0]
@@ -310,10 +310,32 @@ export class Store {
     const bound = await this.pool.query('SELECT id FROM devices WHERE device_key_id = $1 AND revoked = false', [keyId])
     for (const device of bound.rows) {
       await this.pool.query('UPDATE devices SET revoked = true WHERE id = $1', [device.id])
+      await this.pool.query('DELETE FROM device_tokens WHERE device_id = $1', [device.id])
       const cached = this.devices.get(device.id)
       if (cached) cached.revoked = true
       this.invalidate(device.id)
     }
+    return bound.rowCount ?? 0
+  }
+
+  /** Rename a device the caller owns; devices are addressed by their own id. */
+  async renameDevice(userId: string, deviceId: string, name: string): Promise<void> {
+    const updated = await this.pool.query('UPDATE devices SET name = $3 WHERE user_id = $1 AND id = $2 AND revoked = false', [userId, deviceId, name])
+    if (!updated.rowCount) throw new ApiError('DEVICE_NOT_FOUND', 404, '设备不存在或已被移除')
+    // The descriptor is cached for the listing; keep it in step or a reload
+    // serves the old name until the process restarts.
+    const cached = this.devices.get(deviceId)
+    if (cached) cached.descriptor.name = name
+  }
+
+  /** Drop a device the caller owns: tokens go with it, the row stays for history. */
+  async revokeOwnDevice(userId: string, deviceId: string): Promise<void> {
+    const updated = await this.pool.query('UPDATE devices SET revoked = true WHERE user_id = $1 AND id = $2 AND revoked = false', [userId, deviceId])
+    if (!updated.rowCount) throw new ApiError('DEVICE_NOT_FOUND', 404, '设备不存在或已被移除')
+    await this.pool.query('DELETE FROM device_tokens WHERE device_id = $1', [deviceId])
+    const cached = this.devices.get(deviceId)
+    if (cached) cached.revoked = true
+    this.invalidate(deviceId)
   }
 
   async verifyDeviceCredential(login: string, secret: string, allowStandardUsername: boolean): Promise<{ user: UserRow; keyId: string } | undefined> {

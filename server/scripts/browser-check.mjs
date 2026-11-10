@@ -101,6 +101,22 @@ await page.waitForTimeout(500)
 const deviceText = (await page.locator('#devices').innerText()).replace(/\s+/g, ' ')
 check('device list shows the enrolled host', deviceText.includes('Onboarding Mac') && deviceText.includes('macos'), deviceText.slice(0, 80))
 
+// Devices are manageable from the list, not just visible.
+page.once('dialog', (d) => d.accept('工作台 Mac'))
+await page.click('button[data-a="rename"]')
+await page.waitForTimeout(700)
+await page.reload({ waitUntil: 'domcontentloaded' })
+await page.waitForTimeout(600)
+const renamedText = (await page.locator('#devices').innerText()).replace(/\s+/g, ' ')
+check('device rename persists', renamedText.includes('工作台 Mac'), renamedText.slice(0, 60))
+
+await page.click('button[data-a="remove"]')
+await page.waitForTimeout(400)
+await page.click('dialog.confirm button[data-r="1"]')
+await page.waitForTimeout(800)
+const afterRemove = (await page.locator('#devices').innerText()).replace(/\s+/g, ' ')
+check('device disconnect clears the row', afterRemove.includes('还没有设备接入'), afterRemove.slice(0, 50))
+
 // 3. topbar chrome
 check('topbar visible', await page.locator('header.topbar').isVisible())
 check('nav icons rendered', (await page.locator('.side-link .ico').count()) >= 3 + 1)

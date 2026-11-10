@@ -934,6 +934,21 @@ export function createApp(settings: Settings, deps: { pool?: Pool; mailer?: Mail
       await store.audit('device.registered_from_account', session.username, session.id, { deviceId: input.device.deviceId })
       return json(res, 200, await store.register(session.id, input.device))
     }
+    const ownDevice = /^\/api\/v1\/account\/devices\/([A-Za-z0-9._-]{1,64})$/.exec(path)
+    if (ownDevice && (method === 'PATCH' || method === 'DELETE')) {
+      const user = await requireUser(req)
+      if (method === 'PATCH') {
+        const input = await body(req)
+        const name = String(input.name ?? '').trim().slice(0, 80)
+        if (name.length < 1) throw new ApiError('INVALID_MESSAGE', 400, '设备名称不能为空')
+        await store.renameDevice(user.id, ownDevice[1]!, name)
+        await store.audit('device.renamed', user.username, user.id, { deviceId: ownDevice[1] })
+        return json(res, 200, { status: 'renamed', name })
+      }
+      await store.revokeOwnDevice(user.id, ownDevice[1]!)
+      await store.audit('device.removed', user.username, user.id, { deviceId: ownDevice[1] })
+      return json(res, 200, { status: 'removed' })
+    }
     // Device keys belong to the account owner: only the owner may list, create
     // or revoke them, and the plaintext can be revealed again at any time.
     if (path === '/api/v1/account/device-keys' && (method === 'GET' || method === 'POST')) {
@@ -949,9 +964,9 @@ export function createApp(settings: Settings, deps: { pool?: Pool; mailer?: Mail
       const user = await requireUser(req)
       const owned = (await store.listDeviceKeys(user.id)).some(k => k.id === ownKey[1])
       if (!owned) throw new ApiError('DEVICE_KEY_NOT_FOUND', 404)
-      await store.revokeDeviceKey(ownKey[1]!, user.id)
-      await store.audit('device_key.revoked', user.username, user.id, { keyId: ownKey[1] })
-      return json(res, 200, { status: 'revoked' })
+      const disconnected = await store.revokeDeviceKey(ownKey[1]!, user.id)
+      await store.audit('device_key.revoked', user.username, user.id, { keyId: ownKey[1], disconnected })
+      return json(res, 200, { status: 'revoked', disconnected })
     }
 
     // Web sessions read their own device list here; the bearer branch below

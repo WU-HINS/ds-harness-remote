@@ -1,6 +1,8 @@
 import { $, dshApi, dshPost, dshDel, dshEsc, dshFail, dshToast, dshConfirm } from '../shared.js'
 
 const ACTIONS = {
+  'device.renamed': '重命名设备',
+  'device.removed': '移除设备',
   'account.registered': '注册账号',
   'auth.code_failure': '验证码校验失败',
   'device.registered': '注册设备',
@@ -48,8 +50,8 @@ export function init() {
       ? rows.map((u) => {
         const name = dshEsc(u.username)
         const isAdmin = u.role === 'admin'
-        return '<tr><td>' + name + (isAdmin ? ' <span class="badge">管理员</span>' : '') + '</td><td class="mono small">' + dshEsc(u.deviceUsername || '-') +
-          '</td><td>' + (isAdmin ? '管理员' : '普通用户') + '</td><td>' + u.deviceKeys + '</td><td>' +
+        return '<tr><td data-th="账号">' + name + (isAdmin ? ' <span class="badge">管理员</span>' : '') + '</td><td data-th="设备用户名" class="mono small">' + dshEsc(u.deviceUsername || '-') +
+          '</td><td data-th="角色">' + (isAdmin ? '管理员' : '普通用户') + '</td><td data-th="密钥">' + u.deviceKeys + '</td><td data-th="操作">' +
           (isAdmin
             ? '<span class="muted small">受保护</span>'
             : '<div class="actions"><button class="btn ghost sm" data-a="toggle" data-id="' + dshEsc(u.id) + '" aria-label="' + (u.disabled ? '启用' : '禁用') + ' ' + name + '">' + (u.disabled ? '启用' : '禁用') + '</button>' +
@@ -63,9 +65,9 @@ export function init() {
     const xs = r.body.items || []
     $('devices').setAttribute('aria-busy', 'false')
     $('devices').innerHTML = xs.length
-      ? xs.map((x) => '<tr><td>' + dshEsc(x.username) + '</td><td>' + dshEsc(x.name) + '</td><td>' + dshEsc(x.role) + '</td><td>' +
+      ? xs.map((x) => '<tr><td data-th="用户">' + dshEsc(x.username) + '</td><td data-th="设备">' + dshEsc(x.name) + '</td><td data-th="角色">' + dshEsc(x.role) + '</td><td data-th="状态">' +
         (x.revoked ? '<span class="badge off">已吊销</span>' : (x.online ? '<span class="badge ok">在线</span>' : '<span class="badge">离线</span>')) +
-        '</td><td>' + (x.revoked ? '' : '<button class="btn danger sm" data-a="revoke-device" data-id="' + dshEsc(x.deviceId) + '" data-name="' + dshEsc(x.name) + '">吊销</button>') + '</td></tr>').join('')
+        '</td><td data-th="操作">' + (x.revoked ? '' : '<button class="btn danger sm" data-a="revoke-device" data-id="' + dshEsc(x.deviceId) + '" data-name="' + dshEsc(x.name) + '">吊销</button>') + '</td></tr>').join('')
       : emptyRow(5, '还没有设备接入')
   })
 
@@ -73,7 +75,7 @@ export function init() {
     const xs = r.body.items || []
     $('audit').setAttribute('aria-busy', 'false')
     $('audit').innerHTML = xs.length
-      ? xs.map((x) => '<tr><td class="muted small">' + dshEsc(new Date(x.at).toLocaleString()) + '</td><td>' + dshEsc(x.actor || '-') + '</td><td>' + dshEsc(ACTIONS[x.action] || x.action) + '</td></tr>').join('')
+      ? xs.map((x) => '<tr><td data-th="时间" class="muted small">' + dshEsc(new Date(x.at).toLocaleString()) + '</td><td data-th="操作者">' + dshEsc(x.actor || '-') + '</td><td data-th="动作">' + dshEsc(ACTIONS[x.action] || x.action) + '</td></tr>').join('')
       : emptyRow(3, '暂无审计记录')
   })
 
