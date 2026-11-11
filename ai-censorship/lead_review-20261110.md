@@ -751,3 +751,11 @@ Chromium（真库）                 70/70
 2. `git tag v1.15.16` → 推送分支与 tag
 3. CI（Check and test / Build image / Store smoke on PostgreSQL）与 Release（Validate tag / Create release / Publish image）
 4. 镜像 `ghcr.io/wu-hins/ds-harness-remote/server` → `1.15.16` / `1.15` / `latest`
+
+## 发布结果（推送后核对）
+
+- CI run 42996600254：Build image (no push) ✓ / Check and test ✓ / Store smoke on PostgreSQL ✓
+- Release run 42996600296：Validate tag against package version ✓ / Create GitHub release ✓ / Publish image ✓
+- GitHub Release：https://github.com/WU-HINS/ds-harness-remote/releases/tag/v1.15.16
+- 镜像 tag：`ghcr.io/wu-hins/ds-harness-remote/server` → `1.15.16`、`1.15`、`latest`
+- tag 指向提交：`f38edf8 chore(release): 1.15.16`
