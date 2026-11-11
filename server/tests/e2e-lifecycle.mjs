@@ -113,6 +113,30 @@ const badLimit = await req('/api/v1/admin/settings', { method: 'PUT', headers: {
 const afterLimit = (await req('/api/v1/admin/settings', { headers: { cookie: admin } })).body.limits.userRatePerMinute
 check('28 invalid limit is rejected, not zeroed', badLimit.status === 400 && afterLimit === beforeLimit, badLimit.status + ' | ' + afterLimit)
 
+// D10: rotation keeps the key id/bindings, changes the secret, and is audited.
+// Enabling SSO-only cleared every non-admin session, so log alice in again.
+const aliceAgain = await req('/api/v1/auth/login', { method: 'POST', ...json({ username: 'alice', password: 'alice-password-123' }) })
+const aliceCookie2 = cookieOf(aliceAgain)
+check('29 alice can sign in again after SSO-only is lifted', aliceAgain.status === 200 && aliceCookie2.length > 0)
+const key3 = await req('/api/v1/account/device-keys', { method: 'POST', headers: { 'content-type': 'application/json', cookie: aliceCookie2 }, body: JSON.stringify({ label: 'rotate-me' }) })
+check('29 rotation fixture key issued', key3.status === 201 && typeof key3.body.key === 'string', key3.status + ' | ' + JSON.stringify(key3.body))
+const rotated = await req('/api/v1/account/device-keys/' + key3.body.id + '/rotate', { method: 'POST', headers: { cookie: aliceCookie2 } })
+check('29 owner rotates a key', rotated.status === 200 && rotated.body.id === key3.body.id && rotated.body.label === 'rotate-me'
+  && rotated.body.revealable === true && typeof rotated.body.key === 'string' && rotated.body.key !== key3.body.key,
+  rotated.status + ' | ' + String(rotated.body.key || '').slice(0, 6))
+check('29 rotated key works for devices', (await req('/api/v1/auth/login', { method: 'POST', ...json({ username: 'alice', password: rotated.body.key }) })).status === 200)
+check('29 old secret stops working', (await req('/api/v1/auth/login', { method: 'POST', ...json({ username: 'alice', password: key3.body.key }) })).status === 401)
+const afterKeys = (await req('/api/v1/account/device-keys', { headers: { cookie: aliceCookie2 } })).body.keys
+const rotatedRow = afterKeys.find((k) => k.id === key3.body.id)
+check('29 rotated key stays revealable', rotatedRow?.revealable === true && rotatedRow?.key === rotated.body.key)
+const foreignRotate = await req('/api/v1/account/device-keys/' + key3.body.id + '/rotate', { method: 'POST', headers: { cookie: admin } })
+check('29 other accounts cannot rotate this key', foreignRotate.status === 404, String(foreignRotate.status))
+const audit = await req('/api/v1/admin/audit?limit=50', { headers: { cookie: admin } })
+check('29 rotation is audited', Array.isArray(audit.body.items) && audit.body.items.some((a) => a.action === 'device_key.rotated'), JSON.stringify(audit.body.items?.slice(0, 2)))
+await req('/api/v1/account/device-keys/' + key3.body.id, { method: 'DELETE', headers: { cookie: aliceCookie2 } })
+const revokedRotate = await req('/api/v1/account/device-keys/' + key3.body.id + '/rotate', { method: 'POST', headers: { cookie: aliceCookie2 } })
+check('29 revoked keys cannot rotate', revokedRotate.status === 404, String(revokedRotate.status))
+
 await app.close()
 console.log(String.fromCharCode(10) + pass + ' passed, ' + fail + ' failed')
 process.exitCode = fail === 0 ? 0 : 1

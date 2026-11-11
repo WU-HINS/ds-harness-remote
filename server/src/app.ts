@@ -352,10 +352,8 @@ export function createApp(settings: Settings, deps: { pool?: Pool; mailer?: Mail
       const secret = String(input.password ?? '')
       const onlySso = runtime.current.oidc.onlySso
 
-      // 1) Device credentials. Verified against device_keys only — the web
-      //    password never authenticates a device and vice versa.
-      // The account name is always accepted when a real device key is presented;
-      // only the password fallback below is gated by SSO-only.
+      // Device key first; the password fallback below is the only SSO-gated path,
+      // and a web password never authenticates a device (or vice versa).
       const device = secret.length >= 16
         ? await store.verifyDeviceCredential(login, secret, true)
         : undefined
@@ -918,17 +916,13 @@ export function createApp(settings: Settings, deps: { pool?: Pool; mailer?: Mail
     }
     if (method === 'POST' && path === '/api/v1/devices/register') {
       const input = REGISTER.parse(await body(req))
-      // Device enrolment is authorised by a registration ticket only. A web
-      // session must never mint device tokens, otherwise "password cannot be
-      // exchanged for a device credential" would be false.
+      // A registration ticket is the only path; a web session must not mint tokens.
       const ticket = takeTicket(bearer(req))
       if (ticket) {
         await store.audit('device.registered', '(device-key)', ticket.userId, { deviceId: input.device.deviceId })
         return json(res, 200, await store.register(ticket.userId, input.device, ticket.keyId))
       }
-      // Compatibility: the original protocol lets an account token enrol a
-      // device. It stays disallowed under SSO-only, exactly like the password
-      // acting as a device secret.
+      // Compatibility: an account token may enrol, except under SSO-only.
       const session = runtime.current.oidc.onlySso ? undefined : await sessionUser(req)
       if (!session) throw new ApiError('DEVICE_KEY_REQUIRED', 401)
       await store.audit('device.registered_from_account', session.username, session.id, { deviceId: input.device.deviceId })
@@ -949,8 +943,7 @@ export function createApp(settings: Settings, deps: { pool?: Pool; mailer?: Mail
       await store.audit('device.removed', user.username, user.id, { deviceId: ownDevice[1] })
       return json(res, 200, { status: 'removed' })
     }
-    // Device keys belong to the account owner: only the owner may list, create
-    // or revoke them, and the plaintext can be revealed again at any time.
+    // Owner-only: list, create, rotate or revoke; a live key can be echoed again.
     if (path === '/api/v1/account/device-keys' && (method === 'GET' || method === 'POST')) {
       const user = await requireUser(req)
       if (method === 'GET') return json(res, 200, { keys: await store.listDeviceKeys(user.id) })
@@ -958,6 +951,12 @@ export function createApp(settings: Settings, deps: { pool?: Pool; mailer?: Mail
       const key = await store.createDeviceKey(user.id, String(input.label ?? 'device'))
       await store.audit('device_key.created', user.username, user.id, { keyId: key.id })
       return json(res, 201, key)
+    }
+    const keyRotate = /^\/api\/v1\/account\/device-keys\/([0-9a-f-]{36})\/rotate$/.exec(path)
+    if (method === 'POST' && keyRotate) {
+      const user = await requireUser(req), rotated = await store.rotateDeviceKeyById(user.id, keyRotate[1]!)
+      await store.audit('device_key.rotated', user.username, user.id, { keyId: rotated.id })
+      return json(res, 200, { ...rotated, revealable: true })
     }
     const ownKey = /^\/api\/v1\/account\/device-keys\/([0-9a-f-]{36})$/.exec(path)
     if (method === 'DELETE' && ownKey) {

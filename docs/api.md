@@ -51,13 +51,17 @@ credential flow, accept no input and are not part of the supported surface.
 | PATCH | `/api/v1/account/devices/:id` | rename a device owned by the caller |
 | DELETE | `/api/v1/account/devices/:id` | revoke a device owned by the caller |
 | GET | `/api/v1/account/device-keys` | list the caller's device keys |
-| POST | `/api/v1/account/device-keys` | issue a device key, plaintext returned once |
+| POST | `/api/v1/account/device-keys` | issue a device key; the plaintext is returned and stays revealable |
+| POST | `/api/v1/account/device-keys/:id/rotate` | re-key one key in place (same id and bindings); the old secret stops working |
 | DELETE | `/api/v1/account/device-keys/:id` | revoke a key and every device enrolled with it |
 | GET | `/api/v1/turn/credentials` | short-lived ICE credentials, requires `connection_id` |
 
 Device-key rows carry `revealable`. A live key the owner can echo back returns `key` with
 `revealable: true`; a revoked key, or a legacy key created before the sealed copy existed, returns
 `revealable: false` and no `key` — clients must say so instead of rendering an empty cell.
+Rotation is the supported way out of the legacy state: `POST …/:id/rotate` returns the new plaintext
+with `revealable: true`, keeps the key id and its device bindings, and writes `device_key.rotated`.
+Only the owner may rotate; another account gets `404 DEVICE_KEY_NOT_FOUND`, exactly like revoke.
 
 ## Admin (session, role=admin)
 

@@ -420,3 +420,97 @@ build ✓  check ✓  guard: 11 rules, 0 violation(s)  test ✓
 
 - `reviewer-contract`：**APPROVE**（D9 关闭、Store 69/57/12、12 套测试、行数口径、D11 677→621 均逐条命令复核；guard 11/11）。
 - `reviewer-diff2`：首轮 **REJECT**（上述 P1 + 3 个 P2）；修复后 **APPROVE**——counter-gap 关闭，admission 24/24、queue 11/11、budget 16/16，源码级探针确认「有队列即排队、每帧只扣一次」。遗留两条 P3（注释指向旧行为、排队帧在投递时校验 link 状态），均已记录；注释已修。
+
+---
+
+# 第八轮（2026-11-11）· D10 轮换端点 + 密钥密封抽出，发版 1.15.15
+
+## 触发
+
+D11/D9 关闭后，债务表里最接近用户痛点的 P2 是 D10：迁移遗留密钥（无密封副本）只能显示「不可回显」，
+没有出路。契约给的退出条件是「暴露轮换端点，或界面把新建 + 吊销做成一步引导」——选端点，因为
+新建 + 吊销会断开已绑定设备，而轮换可以原地保留绑定。
+
+同时 `store-pg.ts` 798/799 已顶格，加 14 行就会破预算，因此先把密钥密封（HKDF + AES-256-GCM +
+验证码 HMAC）抽成 `server/src/secret-box.ts`，再落轮换方法。
+
+## 变更
+
+| 文件 | 内容 |
+|---|---|
+| `server/src/secret-box.ts`（新，60 行） | `SecretBox`：`codeKey` / `deviceKeyKey` / `seal` / `open` / `codeDigest`，状态仍来自 `server_settings.code_secret` |
+| `server/src/store-pg.ts` | 798 → 773 行；删除 5 个私有加密方法，构造时注入 `SecretBox` 的读写回调；新增 `rotateDeviceKeyById`（替换未使用的 `rotateDeviceKey`） |
+| `server/src/app.ts` | 新增 `POST /api/v1/account/device-keys/:id/rotate`：owner-only，成功返回 `{ id, label, key, revealable: true }`，审计 `device_key.rotated` |
+| `web/src/pages/keys.js` | 活密钥行新增「轮换」；不可回显的旧密钥在密钥列直接给「轮换」（不再让用户自己新建 + 吊销） |
+| `web/src/pages/admin.js` | 审计动作中文映射补 `device_key.rotated = 轮换设备密钥` |
+| 文档 | `docs/api.md` 增加路由与语义（保留 id/绑定、旧密钥立即失效、跨账号 404）；`docs/auth.md` 说明轮换与遗留密钥出路 |
+| 契约 | §2 审计动作 33→34；Store 方法 69/57/12 → 64/57/7；§4.3 store 799→774、app 1090→1089；K7 改为「轮换入口」；D10 → 已关闭；版本 1.15.15 |
+
+## 语义
+
+- **保留**：`device_keys.id`、`label`、`devices.device_key_id` 绑定、已签发的 device token。
+- **失效**：旧明文立即不能用于 `/auth/login` 或 `device-login`（哈希被替换）。
+- **不接受**：已吊销密钥、他人密钥（统一 404 `DEVICE_KEY_NOT_FOUND`）。
+- **审计**：`device_key.rotated` 带 `keyId`，出现在后台审计表。
+- **不回显旧值**：轮换后只返回新明文；旧明文不在响应、日志或审计 detail 中出现。
+
+## 证据
+
+```
+pnpm verify（67 s）  build ✓ check ✓ guard 11/11 ✓ test ✓
+  protocol 9 files / 94 tests
+  server 270：admission 24 · budget 16 · queue 11 · store 35 · runtime 16 · http 59 ·
+              lifecycle 41 · auth 23 · oidc 18 · account 15 · journey 12
+  合计 364 条断言，0 failed
+
+DATABASE_URL=postgres://… pnpm test:pg
+  pg-smoke 9 passed；其余套件同上（真 PostgreSQL 15.19）
+
+Chromium（browser-check，真库 dsh_browser2）     70/70
+  PASS key rotation swaps the secret in place :: 66-kwN9h ≠ GxRsBIIo
+  PASS audit actions read Chinese
+全业务走查（真 SMTP + 真 OIDC + Chromium）        60/60
+```
+
+## 判别测试
+
+- store：`rotation issues a new secret`、`the rotated-away secret stops working`、`other account cannot rotate`；
+- HTTP：old secret 401 / new secret 200、他人 404、已吊销 404、审计表含 `device_key.rotated`；
+- 浏览器：点「轮换」→ 确认 → 同一条目重新显示的新明文 ≠ 轮换前的明文（断言在 `browser-check.mjs`）。
+
+## 过程中修掉的两个真问题
+
+1. **审计中文断言变红**：浏览器测试第一次跑出 `FAIL audit actions read Chinese`——新动作没有中文映射，
+   后台审计表直接显示 `device_key.rotated`。已补映射并复跑 68/68。这条断言有判别力。
+2. **测试自身的 cookie 传法错误**：轮换请求把 `cookie` 放在 fetch 顶层而不是 `headers`，导致 401；
+   修正后通过。不是产品缺陷，但记录在此避免复发。
+
+## 发现并记录
+
+- 打开 `onlySso` 会清除除操作者外的所有会话（`app.ts` 的 `clearOtherSessions`）。全业务走查的轮换段因此
+  先用密码重新登录 alice；这不是缺陷，是 SSO 切换的预期语义，但测试必须遵守。
+
+## 问题分级
+
+- P0：无。
+- P1：无（新端点按 §6 五问逐条核对：owner 会话、越权 404、用户级限流、审计、失败不吞）。
+- P2：D2 仍开放（store 仍混合连接/认证/设备/审计/设置）；D1（app 路由表）仍开放。
+
+## 发布
+
+版本 1.15.15（三处 `package.json` 同步），tag 由提交后推送触发；镜像与 Release 结果在推送后核对。
+
+## 独立评审（本轮）
+
+| 评审 | 结论 | 关键证据 |
+|---|---|---|
+| `reviewer-rotate` | **APPROVE**（无 P0/P1，4×P2） | owner-only 他人/随机 id 均 404 且响应同形；旧秘密 401、新秘密 200；真实绑定设备 `deviceCount` 1→1、FK 不变、refresh token 仍有效；审计只带 keyId；跨站 POST 403、匿名 401 |
+| `reviewer-store` | **APPROVE**（无 P0/P1，2×P2 + 2 可选） | 与抽取前逐项对比：HKDF 参数、AES-GCM 布局（iv12‖tag16‖ct）字节兼容，旧密封行可被新 `SecretBox` 打开、新密封行可被旧实现打开；code_secret 冷启动只写一次；Store 64/57/7；无 SQL 外溢；guard 11/11 |
+
+按评审修掉的 P2：
+
+1. **同一行两个「轮换」按钮**（遗留密钥的密钥列 + 操作列）→ 只保留操作列，并保留 `aria-label`。
+2. **「保留绑定」只有构造性论证、没有用例** → store 新增真实注册设备后轮换，断言 `device_key_id` 不变（store 34→35）。
+3. **浏览器层没覆盖 D10 的真实状态** → browser-check 直接向真库插入一条 `secret IS NULL` 的遗留密钥，断言先显示「不可回显（旧密钥）」，点「轮换」后变成可回显（68→70 条）。
+4. **轮换与 legacy 列回写非原子，且该列已是死列** → 删除 `users.device_key_hash` 回写（`verifyDeviceCredential` 只查 `device_keys`），同时去掉一次重复 digest；store 774→770。
+5. **行数口径 off-by-one** → `799→770`（预算单位），D2 改为 770（readLines），与 §4.3 规则 5 一致。

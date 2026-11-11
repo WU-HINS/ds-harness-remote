@@ -20,11 +20,12 @@ export function init() {
         '<td data-th="密钥">' + (k.id === 'unbound'
           ? '<span class="muted small">—</span>'
           : k.revealable === false
-            ? '<span class="muted small">' + (k.revoked ? '已吊销，不可回显' : '不可回显（旧密钥）· 请新建一把并吊销此钥') + '</span>'
+            ? '<span class="muted small">' + (k.revoked ? '已吊销，不可回显' : '不可回显（旧密钥）') + '</span>'
             : '<span class="mono small keymask" data-key="' + dshEsc(k.key) + '">••••••••••••</span> <button class="btn ghost sm" data-a="reveal">显示</button><button class="btn ghost sm" data-a="copy" data-key="' + dshEsc(k.key) + '">复制</button>') + '</td>' +
         '<td data-th="创建时间" class="muted small">' + (k.createdAt ? dshEsc(new Date(k.createdAt).toLocaleString()) : '—') + '</td>' +
         '<td data-th="操作">' + (k.revoked || k.id === 'unbound' ? '<span class="muted small">—</span>'
-          : '<button class="btn danger sm" data-a="revoke" data-id="' + dshEsc(k.id) + '" data-count="' + k.deviceCount + '" aria-label="吊销密钥 ' + dshEsc(k.label) + '">吊销</button>') + '</td></tr>').join('')
+          : '<button class="btn ghost sm" data-a="rotate" data-id="' + dshEsc(k.id) + '" aria-label="轮换密钥 ' + dshEsc(k.label) + '">轮换</button> '
+            + '<button class="btn danger sm" data-a="revoke" data-id="' + dshEsc(k.id) + '" data-count="' + k.deviceCount + '" aria-label="吊销密钥 ' + dshEsc(k.label) + '">吊销</button>') + '</td></tr>').join('')
       : '<tr><td colspan="6" class="muted">' + empty() + '</td></tr>'
   }
   const load = () => dshApi('/api/v1/account/device-keys')
@@ -47,7 +48,13 @@ export function init() {
       const m = b.parentElement.querySelector('.keymask')
       if (m) { m.textContent = m.getAttribute('data-key'); b.remove() }
     } else if (a === 'copy') dshCopy(b.dataset.key)
-    else if (a === 'revoke') {
+    else if (a === 'rotate') {
+      const yes = await dshConfirm('轮换这把密钥？设备绑定和在线连接不变，但旧密钥立即失效，新密钥用于今后接入。', { title: '轮换密钥', ok: '轮换' })
+      if (!yes) return
+      const r = await dshPost('/api/v1/account/device-keys/' + encodeURIComponent(b.dataset.id) + '/rotate')
+      dshToast(r.ok ? '密钥已轮换，可在列表中显示或复制' : dshFail(r.body, r.status), r.ok ? 'ok' : 'err')
+      load()
+    } else if (a === 'revoke') {
       const count = Number(b.dataset.count || 0)
       const message = count > 0
         ? '吊销这把密钥？使用它的 ' + count + ' 台设备会立即断开，且无法用同一设备 ID 重新接入。'

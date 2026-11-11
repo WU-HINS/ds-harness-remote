@@ -42,12 +42,15 @@ Each user has one virtual device username (`dev-xxxxxxxx`) and any number of dev
 - While SSO-only is off, the account password also works as a device secret. Those devices carry no key
   binding, are listed as `(未绑定密钥)`, and are revoked when the password changes.
 
-Keys are owned by the account, not by the console: users list, create, reveal and revoke them
-on **我的账户**, and the plaintext is stored encrypted (AES-256-GCM) so it can be shown again.
+Keys are owned by the account, not by the console: users list, create, reveal, rotate and revoke
+them on **我的账户**, and the plaintext is stored encrypted (AES-256-GCM) so it can be shown again.
 Administrators cannot read or mint another user's keys, cannot reset a password, and cannot
 disable or delete an administrator account at all.
 
 Revoking a key disconnects and revokes every device enrolled with it. Revocation is terminal.
+Rotating a key re-keys it in place: the id and device bindings stay, the old secret stops working
+immediately, the new plaintext is stored sealed, and the action is audited as `device_key.rotated`.
+This is the supported path for a legacy key whose original plaintext was never sealed.
 
 ## SSO-only matrix
 

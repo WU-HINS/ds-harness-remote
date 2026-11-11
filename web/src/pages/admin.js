@@ -10,6 +10,7 @@ const ACTIONS = {
   'device.revoked_by_admin': '管理员吊销设备',
   'device_key.created': '生成设备密钥',
   'device_key.revoked': '吊销设备密钥',
+  'device_key.rotated': '轮换设备密钥',
   'device_key.ticket_issued': '签发设备票据',
   'device_login.failure': '设备登录失败',
   'device_login.success': '设备登录',

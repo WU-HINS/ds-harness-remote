@@ -11,6 +11,8 @@
 // repository dependency, so CI does not run it.
 
 import { chromium } from 'playwright'
+import { Pool } from 'pg'
+import { randomUUID } from 'node:crypto'
 import { dirname, join } from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
 import { mkdirSync } from 'node:fs'
@@ -134,6 +136,43 @@ const revealedKey = await page.evaluate(async () => {
   return (row.querySelector('.keymask')?.textContent || '').trim()
 })
 check('key lifecycle works from the list', keysAfter === keysBefore + 1 && revealedKey.length >= 16 && !revealedKey.includes('•'), keysBefore + '->' + keysAfter + ' | ' + revealedKey.slice(0, 8))
+// Rotation keeps the row and swaps the secret; the old value must not survive.
+await page.evaluate(() => {
+  const rows = [...document.querySelectorAll('#keys tr')]
+  rows.find((r) => r.innerText.includes('laptop'))?.querySelector('button[data-a="rotate"]')?.click()
+})
+await page.waitForTimeout(300)
+await page.click('dialog.confirm button[data-r="1"]')
+await page.waitForTimeout(800)
+const rotatedKey = await page.evaluate(async () => {
+  const rows = [...document.querySelectorAll('#keys tr')]
+  const row = rows.find((r) => r.innerText.includes('laptop'))
+  row?.querySelector('button[data-a="reveal"]')?.click()
+  await new Promise((r) => setTimeout(r, 120))
+  return (row.querySelector('.keymask')?.textContent || '').trim()
+})
+check('key rotation swaps the secret in place', rotatedKey.length >= 16 && rotatedKey !== revealedKey, rotatedKey.slice(0, 8) + ' ≠ ' + revealedKey.slice(0, 8))
+// D10's actual state: a legacy row with no sealed copy becomes revealable in place.
+const db = new Pool({ connectionString: process.env.DATABASE_URL })
+const ownerId = (await db.query("SELECT id FROM users WHERE username = 'boss@example.com'")).rows[0].id
+await db.query("INSERT INTO device_keys (id, user_id, label, key_hash, secret) VALUES ($1,$2,'legacy-browser','x',NULL)", [randomUUID(), ownerId])
+await db.end()
+await page.reload({ waitUntil: 'domcontentloaded' })
+await page.waitForTimeout(600)
+const legacyRow = page.locator('#keys tr', { hasText: 'legacy-browser' })
+const legacyText = await legacyRow.innerText()
+check('legacy key is flagged, not blank', legacyText.includes('不可回显'), legacyText.slice(0, 40))
+await legacyRow.locator('button[data-a="rotate"]').click()
+await page.waitForTimeout(300)
+await page.click('dialog.confirm button[data-r="1"]')
+await page.waitForTimeout(800)
+const legacyKey = await page.evaluate(async () => {
+  const row = [...document.querySelectorAll('#keys tr')].find((r) => r.innerText.includes('legacy-browser'))
+  row?.querySelector('button[data-a="reveal"]')?.click()
+  await new Promise((r) => setTimeout(r, 120))
+  return (row.querySelector('.keymask')?.textContent || '').trim()
+})
+check('legacy key becomes revealable after rotation', legacyKey.length >= 16 && !legacyKey.includes('•'), legacyKey.slice(0, 8))
 await page.evaluate(() => {
   const rows = [...document.querySelectorAll('#keys tr')]
   const row = rows.find((r) => r.innerText.includes('laptop'))

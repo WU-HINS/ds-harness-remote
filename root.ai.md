@@ -86,7 +86,7 @@
 | 仓库形态 | pnpm workspace：`server`、`web`、`packages/*` | `pnpm-workspace.yaml` |
 | 上游 | liguobao/ds-harness-remote（完整协议）；本仓库是其服务端最小面独立实现 | 本文 §0.1 / §0.2 |
 | 本仓库独有能力 | C1 OIDC、C2 多用户、C3 单用户多密钥 | 本文 §6.1 |
-| 发布版本 | 1.15.14（`package.json`、`server/package.json`、`web/package.json` 三处同步） | `node scripts/guard/index.mjs --only version-lockstep` |
+| 发布版本 | 1.15.15（`package.json`、`server/package.json`、`web/package.json` 三处同步） | `node scripts/guard/index.mjs --only version-lockstep` |
 | 协议包版本 | 0.5.21，独立语义化，服务端以 `workspace:*` 依赖 | `packages/protocol/package.json` |
 | Node | `engines: >=22`；CI 用 24.9.0；镜像用 `node:22-bookworm-slim` | 三处都不得低于 engines |
 | 包管理器 | pnpm 9.15.4（`packageManager` 字段与 CI 一致） | `package.json` |
@@ -99,8 +99,8 @@
 | 中继带宽预算 | 普通账号合计 **5 MiB/s**，按权重分配；权重随账号自身吞吐衰减（占用越多份额越小） | `server/src/relay-budget.ts` |
 | 数据表 | `setup_lock`、`users`、`sessions`、`devices`、`device_tokens`、`device_keys`、`email_codes`、`server_settings`、`audit_log` | `server/src/schema.ts` |
 | 错误码 | 53 个，集中在 `new ApiError('…')` | `grep -ohE "new ApiError\('[A-Z_]+'" server/src/*.ts` |
-| 审计动作 | 33 个，形如 `device_key.created` | `grep -ohE "audit\('[a-z_.]+'" server/src/*.ts` |
-| 存储方法 | `Store` 类 69 个方法（57 公开 / 12 私有），是唯一数据入口 | `server/src/store-pg.ts`（TS AST 计数） |
+| 审计动作 | 34 个，形如 `device_key.created` | `grep -ohE "audit\('[a-z_.]+'" server/src/*.ts` |
+| 存储方法 | `Store` 类 64 个方法（57 公开 / 7 私有），是唯一数据入口 | `server/src/store-pg.ts`（TS AST 计数） |
 
 **禁止**在没有核对上表的情况下断言"我们有 / 我们没有某个能力"。断言前跑命令，把输出贴进提交说明。
 
@@ -173,8 +173,8 @@
 
 | 文件 | 预算（行） |
 |---|---|
-| `server/src/app.ts` | 1090 |
-| `server/src/store-pg.ts` | 799 |
+| `server/src/app.ts` | 1089（1090→1089：新增轮换路由后压缩注释，零余量） |
+| `server/src/store-pg.ts` | 770（799→770：抽出 `secret-box.ts`、按 key 轮换、删除死列回写） |
 | `server/src/gateway.ts` | 621（733→621：抽出 `gateway-admission.ts`，D11 已关闭） |
 | `packages/protocol/src/index.ts` | 1473 |
 
@@ -253,19 +253,19 @@
 | M2 | 角色只有 `admin`/`user`；管理员不可被禁用/删除（`ADMIN_PROTECTED` 409）、不可删自己（`CANNOT_DELETE_SELF`） | `server/tests/http-smoke.mjs` |
 | M3 | 虚拟设备用户名 `dev-xxxxxxxx` 唯一且随机；不得由用户名/邮箱推导 | `server/src/store-pg.ts` |
 | M4 | 三层限流：每用户请求/分钟、每用户并发连接上限、每 IP 匿名限流；外加**普通账号共享 5 MiB/s 中继带宽，按权重分配**：`weight = 1/(1+rate/B)`，`share = B·w/Σw`，份额之和恒等于 B。**超出份额先入队**（每设备 FIFO，32 帧 / 256 KiB 上限，最长等待 15s），队列空转即断开；**禁止丢帧**（中继帧带严格 counter，缺口会被对端判为协议违规）。单写者前提不得破坏 | `server/src/ratelimit.ts`、`server/src/gateway.ts`、`server/src/gateway-admission.ts`、`server/src/relay-budget.ts`、`server/src/relay-queue.ts` |
-| M5 | 所有写操作必须落审计，动作名在 §2 的 33 个白名单内，且带 actor 与目标 | `server/src/store-pg.ts` |
+| M5 | 所有写操作必须落审计，动作名在 §2 的 34 个白名单内，且带 actor 与目标 | `server/src/store-pg.ts` |
 
 **C3 · 单用户多密钥（K1–K6）**
 
 | # | 不变量 | 现状依据 |
 |---|---|---|
 | K1 | 一个用户 N 把密钥，每把可绑定 N 台设备（`devices.device_key_id`）；换绑不删除密钥 | `server/src/store-pg.ts` |
-| K2 | 库内 = 摘要（登录查找）+ AES-256-GCM 加密副本；**所有者必须能回显**：同一明文逐字节一致，接口返回 `key` 且 `revealable: true`。加密密钥由 `server_settings.code_secret` 经 HKDF 派生，**数据库备份等同凭据** | `server/src/store-pg.ts`、`docs/api.md` |
+| K2 | 库内 = 摘要（登录查找）+ AES-256-GCM 加密副本；**所有者必须能回显**：同一明文逐字节一致，接口返回 `key` 且 `revealable: true`。加密密钥由 `server_settings.code_secret` 经 HKDF 派生，**数据库备份等同凭据** | `server/src/store-pg.ts`、`server/src/secret-box.ts`、`docs/api.md` |
 | K3 | 已吊销密钥：不可查看明文、不可登录；吊销同时吊销其名下设备并删除 `device_tokens`（立即断连） | `server/src/store-pg.ts` |
 | K4 | 管理员**永远**不可读取、铸造或吊销他人的密钥；该接口已移除，且有用例断言返回 404 | `server/tests/e2e-lifecycle.mjs` |
 | K5 | 未绑定密钥的历史设备必须显示为「(未绑定密钥)」，不得隐藏，也不得计入某把密钥 | `server/src/store-pg.ts` |
 | K6 | 改密码/改邮箱不得静默改变密钥集合；密钥增删必须有 `device_key.created` / `device_key.revoked` 审计 | `server/src/app.ts` |
-| K7 | **回显契约**：未吊销密钥必须 `revealable: true` 且带 `key`；已吊销或历史无密封副本的密钥必须 `revealable: false` 且不带 `key`，界面显式说明并给出「新建一把 + 吊销此钥」的路径，**不得静默留空**。任何新增密钥的代码路径不得造出无法回显的活密钥（唯一例外：迁移遗留，必须标记） | `server/src/store-pg.ts`、`web/src/pages/keys.js` |
+| K7 | **回显契约**：未吊销密钥必须 `revealable: true` 且带 `key`；已吊销或历史无密封副本的密钥必须 `revealable: false` 且不带 `key`，界面显式说明并给出「轮换」入口（D10），**不得静默留空**。任何新增密钥的代码路径不得造出无法回显的活密钥（唯一例外：迁移遗留，必须标记） | `server/src/store-pg.ts`、`web/src/pages/keys.js` |
 
 ## 7. API 契约
 
@@ -380,7 +380,7 @@
 | # | 债务 | 级别 | 退出条件 |
 |---|---|---|---|
 | D1 | `server/src/app.ts` 1090 行：路由分发、handler、页面装配混在一处 | P2 | 拆出路由表与 handler 模块，降到 700 行以内 |
-| D2 | `server/src/store-pg.ts` 799 行：连接、认证、设备、审计、设置混在一个类 | P2 | 按领域拆模块，保持单一事务边界 |
+| D2 | `server/src/store-pg.ts` 770 行：连接、认证、设备、审计、设置仍在一个类 | P2 | 按领域拆模块，保持单一事务边界（密钥密封已抽出 `secret-box.ts`） |
 | D3 | `server/src/gateway.ts` 621 行：连接状态机与链路转发仍在同一类 | P2 | 拆出连接状态机（帧窗口/带宽/队列已随 D11 抽出） |
 | D4 | `packages/protocol/src/index.ts` 1473 行 | P2 | 按帧类型拆文件，导出面不变 |
 | D5 | `app.ts` 里仍有 1 处 `console.warn`（route_not_found 兜底） | P2 | 接入 `logger.ts` 后删除该豁免 |
@@ -388,7 +388,7 @@
 | D7 | 管理端设备密钥端点曾在文档中承诺但代码未实现（已修文档） | 已关闭 | 若确需该能力，先写代码，再写文档 |
 | D8 | `docs/security.md` 曾写「设备密钥只存摘要、明文只显示一次」，与实现（加密副本、可再次查看）相反 | 已关闭（P0） | 已按 K2 改写；改该段必须同步 §6.1 |
 | D9 | 上游协议基线曾未钉版本号，仅有 `fixtures/protocol/v1` 作证 | 已关闭 | `fixtures/protocol/v1/manifest.json` 已记录上游提交 `14037e78f45e14f7a5ad56c2266944548def7e3d`（协议包 0.5.21），README 记录来源与核对方式 |
-| D10 | 迁移遗留密钥（无密封副本）只能标记为不可回显，当前没有轮换入口（`rotateDeviceKey` 未暴露 HTTP） | P2 | 暴露轮换端点，或在界面上把「新建 + 吊销」做成一步引导 |
+| D10 | 迁移遗留密钥（无密封副本）曾只能标记为不可回显 | 已关闭 | 已暴露 `POST /api/v1/account/device-keys/:id/rotate`（原地换密、保留绑定、审计 `device_key.rotated`），界面提供「轮换」；store / HTTP / 浏览器三层断言 |
 | D11 | `gateway.ts` HEAD 677 → 733（未提交中间态）→ 621 | 已关闭（P1） | 已抽出 `server/src/gateway-admission.ts`（帧窗口、掉线链路墓碑、加权带宽、发送队列），`gateway.ts` 733→621、预算 621；回归 `server/tests/admission-smoke.mjs`（24 条断言）。 |
 
 ---

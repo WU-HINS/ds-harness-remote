@@ -38,6 +38,25 @@ await pool.query("INSERT INTO device_keys (id, user_id, label, key_hash, secret)
 firstRow = (await store.listDeviceKeys(alice.user.id)).find((k) => k.id === 'legacy-key')
 check('legacy key is flagged, never blank', firstRow?.revealable === false && firstRow?.key === undefined)
 
+// D10: rotation re-keys one owned key in place, without changing its bindings.
+const rotating = await store.createDeviceKey(alice.user.id, 'rotate-me')
+const rotated = await store.rotateDeviceKeyById(alice.user.id, rotating.id)
+check('rotation keeps the key id and label', rotated.id === rotating.id && rotated.label === 'rotate-me')
+check('rotation issues a new secret', rotated.key !== rotating.key && (await store.verifyDeviceCredential('alice', rotated.key, true))?.keyId === rotating.id)
+check('the rotated-away secret stops working', (await store.verifyDeviceCredential('alice', rotating.key, true)) === undefined)
+check('rotated key is revealable again', (await store.listDeviceKeys(alice.user.id)).find((k) => k.id === rotating.id)?.key === rotated.key)
+await expectErr('another account cannot rotate this key', 'DEVICE_KEY_NOT_FOUND', () => store.rotateDeviceKeyById(bob.user.id, rotating.id))
+const legacyRotated = await store.rotateDeviceKeyById(alice.user.id, 'legacy-key')
+const legacyRow = (await store.listDeviceKeys(alice.user.id)).find((k) => k.id === 'legacy-key')
+check('rotating a legacy key makes it revealable', legacyRow?.revealable === true && legacyRow?.key === legacyRotated.key)
+
+// Rotation must not touch devices.device_key_id: existing devices stay bound.
+const boundKey = await store.createDeviceKey(alice.user.id, 'bound')
+await store.register(alice.user.id, { v: 1, deviceId: 'device-rotate', name: 'rotate-host', role: 'host', identityKey: 'r'.repeat(32) }, boundKey.id)
+await store.rotateDeviceKeyById(alice.user.id, boundKey.id)
+const boundDevice = store.list(alice.user.id).find((d) => d.descriptor.deviceId === 'device-rotate')
+check('rotation keeps the device binding', boundDevice?.deviceKeyId === boundKey.id, String(boundDevice?.deviceKeyId))
+
 const open = await store.createSession(alice.user.id, 3600_000)
 check('session resolves user', (await store.sessionUser(open.token))?.id === alice.user.id)
 

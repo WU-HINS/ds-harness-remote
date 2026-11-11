@@ -1,6 +1,7 @@
 import { Pool } from 'pg'
 import { SCHEMA_NORMALISE, SCHEMA_STATEMENTS } from './schema.js'
-import { createCipheriv, createDecipheriv, createHash, createHmac, hkdfSync, randomBytes, randomInt, randomUUID, scrypt, scryptSync, timingSafeEqual } from 'node:crypto'
+import { createHash, createHmac, randomBytes, randomInt, randomUUID, scrypt, scryptSync, timingSafeEqual } from 'node:crypto'
+import { SecretBox } from './secret-box.js'
 
 export class ApiError extends Error {
   constructor(readonly code: string, readonly status = 400, readonly detail?: string) { super(detail ?? code) }
@@ -74,7 +75,14 @@ export class Store {
   private touchTimer?: NodeJS.Timeout
   onInvalidate: (id: string) => void = () => {}
 
-  constructor(readonly pool: Pool) {}
+  private readonly secrets: SecretBox
+
+  constructor(readonly pool: Pool) {
+    this.secrets = new SecretBox(
+      async () => (await this.getSetting<{ key: string }>('code_secret'))?.key,
+      async key => this.setSetting('code_secret', { key }),
+    )
+  }
 
   /**
    * Converge the database to the declarative schema. Safe to run on every boot
@@ -272,7 +280,7 @@ export class Store {
     const id = randomUUID()
     const key = randomToken()
     await this.pool.query('INSERT INTO device_keys (id, user_id, label, key_hash, secret) VALUES ($1,$2,$3,$4,$5)',
-      [id, userId, label.slice(0, 64) || 'device', digest(key), await this.sealSecret(key)])
+      [id, userId, label.slice(0, 64) || 'device', digest(key), await this.secrets.seal(key)])
     return { id, label, key }
   }
 
@@ -284,7 +292,7 @@ export class Store {
     // A live key is reversible by contract: the owner may echo it again. Revoked
     // keys and legacy rows without a sealed copy are flagged, never silently blank.
     const listed = await Promise.all(keys.rows.map(async (row: any) => {
-      const key = row.revoked ? undefined : await this.openSecret(row.secret)
+      const key = row.revoked ? undefined : await this.secrets.open(row.secret)
       return {
         id: row.id, label: row.label, revoked: row.revoked,
         createdAt: row.created_at, lastUsedAt: row.last_used_at,
@@ -491,7 +499,7 @@ export class Store {
   async createUser(input: { username: string; password?: string; role?: 'admin' | 'user'; email?: string; emailVerified?: boolean }): Promise<{ user: UserRow; deviceKey: string }> {
     const deviceKey = randomToken()
     const deviceUsername = await this.uniqueDeviceUsername()
-    const sealed = await this.sealSecret(deviceKey)
+    const sealed = await this.secrets.seal(deviceKey)
     const client = await this.pool.connect()
     try {
       await client.query('BEGIN')
@@ -527,7 +535,7 @@ export class Store {
       if (count.rows[0].n > 0) { await client.query('ROLLBACK'); throw new ApiError('SETUP_CLOSED', 409) }
       const deviceKey = randomToken()
       const deviceUsername = 'dev-' + randomUUID().replace(/-/g, '').slice(0, 10)
-      const sealedAdminKey = await this.sealSecret(deviceKey)
+      const sealedAdminKey = await this.secrets.seal(deviceKey)
       const inserted = await client.query(
         'INSERT INTO users (id, username, role, password_hash, device_key_hash, device_username) VALUES ($1,$2,$3,$4,$5,$6) RETURNING *',
         [randomUUID(), username, 'admin', hashPassword(password), digest(deviceKey), deviceUsername])
@@ -566,20 +574,20 @@ export class Store {
     if (cached) cached.revoked = true
     this.invalidate(deviceId)
   }
-  async rotateDeviceKey(userId: string): Promise<string> {
-    const deviceKey = randomToken()
-    const hash = digest(deviceKey)
-    const existing = await this.pool.query(
-      "SELECT id FROM device_keys WHERE user_id = $1 AND label = 'default' AND revoked = false LIMIT 1", [userId])
-    const sealed = await this.sealSecret(deviceKey)
-    if (existing.rows[0]) {
-      await this.pool.query('UPDATE device_keys SET key_hash = $2, secret = $3, last_used_at = NULL WHERE id = $1', [existing.rows[0].id, hash, sealed])
-    } else {
-      await this.pool.query('INSERT INTO device_keys (id, user_id, label, key_hash, secret) VALUES ($1,$2,$3,$4,$5)',
-        [randomUUID(), userId, 'default', hash, sealed])
-    }
-    await this.pool.query('UPDATE users SET device_key_hash = $2 WHERE id = $1', [userId, hash])
-    return deviceKey
+  /**
+   * Re-key one owned key in place: same id and device bindings, new secret.
+   * Existing device tokens survive (they are not derived from the key); only
+   * future enrolments need the new plaintext. A revoked or foreign key is 404.
+   */
+  async rotateDeviceKeyById(userId: string, keyId: string): Promise<{ id: string; label: string; key: string }> {
+    const key = randomToken()
+    const sealed = await this.secrets.seal(key)
+    const updated = await this.pool.query(
+      'UPDATE device_keys SET key_hash = $3, secret = $4, last_used_at = NULL WHERE id = $1 AND user_id = $2 AND revoked = false RETURNING id, label',
+      [keyId, userId, digest(key), sealed])
+    const row = updated.rows[0]
+    if (!row) throw new ApiError('DEVICE_KEY_NOT_FOUND', 404)
+    return { id: row.id, label: row.label, key }
   }
   async verifyDeviceKey(username: string, deviceKey: string): Promise<UserRow | undefined> {
     const verified = await this.verifyDeviceCredential(username, deviceKey, true)
@@ -683,43 +691,6 @@ export class Store {
     return result.rows.map((row: any) => ({ at: row.at, actor: row.actor, action: row.action, userId: row.user_id, detail: row.detail }))
   }
 
-  private codeSecret?: string
-  private async codeKey(): Promise<string> {
-    if (this.codeSecret) return this.codeSecret
-    const stored = await this.getSetting<{ key: string }>('code_secret')
-    if (stored?.key) { this.codeSecret = stored.key; return stored.key }
-    const key = randomBytes(32).toString('base64url')
-    await this.setSetting('code_secret', { key })
-    this.codeSecret = key
-    return key
-  }
-  private deviceKeyCrypto?: Buffer
-  /** AES-256-GCM key derived from the server secret: owners must be able to reveal keys. */
-  private async deviceKeyKey(): Promise<Buffer> {
-    if (this.deviceKeyCrypto) return this.deviceKeyCrypto
-    const material = Buffer.from(await this.codeKey(), 'utf8')
-    this.deviceKeyCrypto = Buffer.from(hkdfSync('sha256', material, Buffer.alloc(0), 'dsh.device-key', 32))
-    return this.deviceKeyCrypto
-  }
-  private async sealSecret(plain: string): Promise<string> {
-    const iv = randomBytes(12)
-    const cipher = createCipheriv('aes-256-gcm', await this.deviceKeyKey(), iv)
-    const body = Buffer.concat([cipher.update(plain, 'utf8'), cipher.final()])
-    return Buffer.concat([iv, cipher.getAuthTag(), body]).toString('base64')
-  }
-  private async openSecret(sealed: string | null | undefined): Promise<string | undefined> {
-    if (!sealed) return undefined
-    try {
-      const raw = Buffer.from(sealed, 'base64')
-      const decipher = createDecipheriv('aes-256-gcm', await this.deviceKeyKey(), raw.subarray(0, 12))
-      decipher.setAuthTag(raw.subarray(12, 28))
-      return Buffer.concat([decipher.update(raw.subarray(28)), decipher.final()]).toString('utf8')
-    } catch { return undefined }
-  }
-  private async codeDigest(code: string, email: string, purpose: string): Promise<string> {
-    return createHmac('sha256', await this.codeKey()).update(code + ':' + email + ':' + purpose).digest('hex')
-  }
-
   /** Issue a 6-digit code; only its keyed digest is stored. Caller decides delivery. */
   async issueEmailCode(email: string, purpose: string, ttlMs = 600_000): Promise<string> {
     const value = email.trim().toLowerCase()
@@ -740,7 +711,7 @@ export class Store {
     const code = String(randomInt(0, 1_000_000)).padStart(6, '0')
     await this.pool.query(
       'INSERT INTO email_codes (id, email, purpose, code_hash, expires_at) VALUES ($1,$2,$3,$4,$5)',
-      [randomUUID(), value, purpose, await this.codeDigest(code, value, purpose), new Date(Date.now() + ttlMs)])
+      [randomUUID(), value, purpose, await this.secrets.codeDigest(code, value, purpose), new Date(Date.now() + ttlMs)])
     return code
   }
 
@@ -765,7 +736,7 @@ export class Store {
       'UPDATE email_codes SET attempts = attempts + 1 WHERE id = $1 AND consumed_at IS NULL AND attempts < 5', [record.id])
     if ((charged.rowCount ?? 0) === 0) return false
     const expected = Buffer.from(record.code_hash)
-    const actual = Buffer.from(await this.codeDigest(code.trim(), value, purpose))
+    const actual = Buffer.from(await this.secrets.codeDigest(code.trim(), value, purpose))
     return expected.length === actual.length && timingSafeEqual(expected, actual)
   }
 
