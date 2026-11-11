@@ -42,10 +42,12 @@ node budget-smoke.mjs
 node relay-queue-smoke.mjs
 node admission-smoke.mjs
 node store-smoke.mjs
+node invariants-smoke.mjs
 node runtime-smoke.mjs
 node http-smoke.mjs
 node e2e-lifecycle.mjs
 node e2e-auth.mjs
 node e2e-oidc.mjs
+node oidc-invariants.mjs
 node e2e-account.mjs
 node e2e-journey.mjs

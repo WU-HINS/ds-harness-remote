@@ -16,7 +16,7 @@ for (let i = 0; i < 40; i += 1) { clock += 10; budget.take('alice', 200_000) }
 const heavy = budget.shareOf('alice')
 const light = budget.shareOf('bob')
 check('heavy account gets a smaller share', heavy < light, Math.round(heavy) + ' < ' + Math.round(light))
-check('shares add up to the budget', Math.abs(heavy + light - 100_000) < 1, String(heavy + light))
+check('[M4] shares add up to the budget', Math.abs(heavy + light - 100_000) < 1, String(heavy + light))
 check('heavy share stays a usable fraction', heavy > 1_000, String(Math.round(heavy)))
 
 // Idle time restores the weight: throttling must not be a life sentence.

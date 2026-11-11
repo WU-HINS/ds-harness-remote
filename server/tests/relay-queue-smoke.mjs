@@ -16,7 +16,7 @@ check('queue reports its depth and bytes', queue.frames === 2 && queue.bytes ===
 credit = 1
 let result = queue.drain()
 check('drain stops when credit runs out', result.delivered === 1 && queue.frames === 1)
-check('delivery preserves order', JSON.stringify(delivered) === '[0]', JSON.stringify(delivered))
+check('[M4] delivery preserves order', JSON.stringify(delivered) === '[0]', JSON.stringify(delivered))
 credit = 5
 queue.drain()
 check('remaining frame follows in order', JSON.stringify(delivered) === '[0,1]', JSON.stringify(delivered))

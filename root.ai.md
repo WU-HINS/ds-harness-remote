@@ -91,7 +91,7 @@
 | Node | `engines: >=22`；CI 用 24.9.0；镜像用 `node:22-bookworm-slim` | 三处都不得低于 engines |
 | 包管理器 | pnpm 9.15.4（`packageManager` 字段与 CI 一致） | `package.json` |
 | 服务端依赖 | `pg`、`ws`、`jose`、`nodemailer`、`zod` | `server/package.json` |
-| 测试栈 | `pg-mem` + 手写 `.mjs` 冒烟套件（12 套；`pg-smoke` 需 `DATABASE_URL`）；协议包用 `vitest`（9 套） | `server/scripts/smoke-store.sh` |
+| 测试栈 | `pg-mem` + 手写 `.mjs` 冒烟套件（14 套；`pg-smoke` 需 `DATABASE_URL`）；协议包用 `vitest`（9 套） | `server/scripts/smoke-store.sh` |
 | 协议一致性夹具 | `fixtures/protocol/v1`（11 个 JSON/README），由 `conformance-fixtures` 用例逐条校验 | `packages/protocol/tests/conformance-fixtures.test.ts` |
 | 测试基建 | `scripts/test-scenarios.mjs`：场景分组执行器，被 5 个协议用例导入 | `packages/protocol/tests/error-codes.test.ts` |
 | 数据库 | **仅 PostgreSQL**，声明式 schema，**没有迁移目录** | `server/src/schema.ts` |
@@ -112,8 +112,8 @@
 |---|---|---|---|
 | `pnpm build` | protocol → web(esbuild) → server(tsc) | 产物不成立 | 每次提交前 |
 | `pnpm -r check` | 三个包的类型检查 | 类型层已破 | 每次提交前 |
-| `pnpm guard` | 11 条静态不变量（见 §3.2） | 结构/契约/预算已漂移 | 每次提交前，CI 强制 |
-| `pnpm test` | = `pnpm -r test`：server 12 套冒烟（`pg-smoke` 需 `DATABASE_URL`）+ protocol 9 套 vitest | 行为回归 | 每次提交前 |
+| `pnpm guard` | 12 条静态不变量（见 §3.2） | 结构/契约/预算/不变量覆盖已漂移 | 每次提交前，CI 强制 |
+| `pnpm test` | = `pnpm -r test`：server 14 套冒烟（`pg-smoke` 需 `DATABASE_URL`）+ protocol 9 套 vitest | 行为回归 | 每次提交前 |
 | `pnpm test:pg` | 同上但打真 PostgreSQL | pg-mem 掩盖了方言差异 | 涉及 SQL、索引、事务、锁时 |
 | `node server/scripts/protocol-walkthrough.mjs` | 双端协议走查 | 帧语义与客户端不兼容 | 改动 `packages/protocol/src` 时 |
 | `node server/scripts/client-compat-walkthrough.mjs` | 旧客户端兼容 | 老客户端会断 | 改动握手/认证帧时 |
@@ -128,7 +128,7 @@
 5. 每次提交必须贴出门禁输出摘要（命令 + 结果 + 耗时）。贴不出来 = 没跑。
 6. 新增一条 guard 规则的 PR 必须先证明它在违规输入下会失败（注入一条假违规，看它变红，再撤回）。只会变绿的检查器等于没有检查器。
 
-### 3.2 `pnpm guard` 的 11 条不变量
+### 3.2 `pnpm guard` 的 12 条不变量
 
 | 规则 | 断言 |
 |---|---|
@@ -142,6 +142,7 @@
 | `version-lockstep` | 三处发布版本一致；协议包独立版本；依赖必须是 `workspace:*` |
 | `secret-scan` | 源码与文档不得出现真实凭据（私钥、AKIA、ghp_、Slack、字面 JWT） |
 | `root-mirror` | 仓库内的 `root.ai.md` 必须是项目根版本的逐字镜像（由 `--sync` 生成，不允许手改） |
+| `invariant-coverage` | C1/C2/C3 的 19 条不变量（O1–O7、M1–M5、K1–K7）每条都必须在测试名里有 `[ID]` 具名用例；缺失即失败 |
 | `fork-surface` | 每条 `/api` 路由必须落在已登记的能力家族内；新家族不登记即失败（§0.1 准入三问的机器化） |
 
 阈值与豁免**只允许**在 `scripts/guard/policy.json` 里改。改阈值是评审事项，不是实现细节；豁免必须带 `reason`，并且要能在债务登记（§15）里找到对应条目。
@@ -231,7 +232,7 @@
 
 ### 6.1 三条差异化能力的不变量（C1 / C2 / C3）
 
-违反任一条 = **P0**；每条都必须有对应用例，缺用例 = P1。
+违反任一条 = **P0**；每条都必须在测试名里有 `[O1]`…`[K7]` 具名用例，由 `invariant-coverage` 强制，缺用例 = P1。
 
 **C1 · OIDC（O1–O7）**
 
@@ -255,7 +256,7 @@
 | M4 | 三层限流：每用户请求/分钟、每用户并发连接上限、每 IP 匿名限流；外加**普通账号共享 5 MiB/s 中继带宽，按权重分配**：`weight = 1/(1+rate/B)`，`share = B·w/Σw`，份额之和恒等于 B。**超出份额先入队**（每设备 FIFO，32 帧 / 256 KiB 上限，最长等待 15s），队列空转即断开；**禁止丢帧**（中继帧带严格 counter，缺口会被对端判为协议违规）。单写者前提不得破坏 | `server/src/ratelimit.ts`、`server/src/gateway.ts`、`server/src/gateway-admission.ts`、`server/src/relay-budget.ts`、`server/src/relay-queue.ts` |
 | M5 | 所有写操作必须落审计，动作名在 §2 的 34 个白名单内，且带 actor 与目标 | `server/src/store-pg.ts` |
 
-**C3 · 单用户多密钥（K1–K6）**
+**C3 · 单用户多密钥（K1–K7）**
 
 | # | 不变量 | 现状依据 |
 |---|---|---|
@@ -400,4 +401,4 @@
 3. 用真实设备跑一遍 `server/scripts/browser-check.mjs` 并纳入 CI 的定时任务。
 4. 评估把 `pg-mem` 冒烟与真库冒烟的差异用例单列，减少「本地绿、线上红」。
 5. 把 §12 的评审文件纳入 CI 检查：提交涉及 §6 任一文件却没有新增评审文件时失败。
-6. 把 C1/C2/C3 的不变量逐条落到具名用例（O1–O7、M1–M5、K1–K6），由 `test-wiring` 反查缺失项。
+6. ~~把 C1/C2/C3 的不变量逐条落到具名用例~~（已完成：O1–O7、M1–M5、K1–K7 由 `invariant-coverage` 强制，缺 `[ID]` 即红）。

@@ -1,6 +1,6 @@
 
 import { newDb } from 'pg-mem'
-import { Store, ApiError } from './build/store-pg.js'
+import { Store, ApiError, digest } from './build/store-pg.js'
 
 const db = newDb({ autoCreateForeignKeyIndices: true })
 const { Pool } = db.adapters.createPg()
@@ -23,6 +23,9 @@ await expectErr('second setup is rejected', 'SETUP_CLOSED', () => store.createFi
 
 const alice = await store.createUser({ username: 'alice', password: 'alice-password-123', role: 'user' })
 const bob = await store.createUser({ username: 'bob', role: 'user' })
+check('[M3] device usernames are unique and not derived', alice.user.device_username !== bob.user.device_username
+  && !alice.user.device_username.includes('alice') && !bob.user.device_username.includes('bob'),
+  alice.user.device_username + ' / ' + bob.user.device_username)
 check('device key verifies', (await store.verifyDeviceKey('alice', alice.deviceKey))?.id === alice.user.id)
 check('wrong device key rejected', (await store.verifyDeviceKey('alice', 'x'.repeat(43))) === undefined)
 
@@ -31,9 +34,12 @@ const firstKey = await store.createDeviceKey(alice.user.id, 'laptop')
 let aliceKeys = await store.listDeviceKeys(alice.user.id)
 let firstRow = aliceKeys.find((k) => k.id === firstKey.id)
 check('live key echoes back unchanged', firstRow?.revealable === true && firstRow?.key === firstKey.key)
+const stored = (await pool.query('SELECT key_hash, secret FROM device_keys WHERE id = $1', [firstKey.id])).rows[0]
+check('[K2] storage is a digest plus a sealed copy', stored?.key_hash === digest(firstKey.key)
+  && stored?.secret !== firstKey.key && typeof stored?.secret === 'string')
 await store.revokeDeviceKey(firstKey.id, alice.user.id)
 firstRow = (await store.listDeviceKeys(alice.user.id)).find((k) => k.id === firstKey.id)
-check('revoked key refuses to echo', firstRow?.revealable === false && firstRow?.key === undefined)
+check('[K3] revoked key refuses to echo', firstRow?.revealable === false && firstRow?.key === undefined)
 await pool.query("INSERT INTO device_keys (id, user_id, label, key_hash, secret) VALUES ('legacy-key', $1, 'legacy', 'x', NULL)", [alice.user.id])
 firstRow = (await store.listDeviceKeys(alice.user.id)).find((k) => k.id === 'legacy-key')
 check('legacy key is flagged, never blank', firstRow?.revealable === false && firstRow?.key === undefined)
@@ -98,8 +104,10 @@ check('setup key peek', (await store.peekSetupKey('one-time-key')) === true)
 check('setup key consumes', (await store.consumeSetupKey('one-time-key')) === true)
 check('setup key is single use', (await store.peekSetupKey('one-time-key')) === false)
 
-const audit = await store.listAudit(10)
-check('audit rows readable', Array.isArray(audit))
+await store.audit('device_key.created', 'alice', alice.user.id, { keyId: firstKey.id })
+const audit = await store.listAudit(20)
+const auditRow = audit.find((row) => row.action === 'device_key.created' && row.userId === alice.user.id && row.detail?.keyId === firstKey.id)
+check('writes land in the audit log with actor and target', auditRow?.actor === 'alice', JSON.stringify(auditRow))
 
 // per-mailbox quota: five codes per hour across purposes
 let quotaHit = false

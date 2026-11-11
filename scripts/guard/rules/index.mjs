@@ -9,6 +9,7 @@ import { rule as testWiring } from './test-wiring.mjs'
 import { rule as versionLockstep } from './version-lockstep.mjs'
 import { rule as secretScan } from './secret-scan.mjs'
 import { rule as rootMirror } from './root-mirror.mjs'
+import { rule as invariantCoverage } from './invariant-coverage.mjs'
 
 export const rules = [
   fileBudget,
@@ -22,4 +23,5 @@ export const rules = [
   versionLockstep,
   secretScan,
   rootMirror,
+  invariantCoverage,
 ]

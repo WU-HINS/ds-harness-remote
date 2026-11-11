@@ -649,3 +649,61 @@ Chromium（真库 dsh_browser3）    70/70
 
 - M3：`invariant-coverage` 门禁 + O/M/K 具名用例；
 - M4：发布 1.15.16。
+
+---
+
+# 第十一轮（2026-11-11）· M3：invariant-coverage 门禁 + 19 条具名用例
+
+## 目标
+
+目标 `goal-44066b0a…` 的第三里程碑：新增第 12 条 guard，O1–O7 / M1–M5 / K1–K7 每条都有
+`[ID]` 具名用例；缺失即红。
+
+## 实现
+
+| 文件 | 内容 |
+|---|---|
+| `scripts/guard/rules/invariant-coverage.mjs` | 只认 `check/expectReject/it/test` 的第一个**字符串字面量**；字符串感知地剥掉 `//` 与 `/* */`，注释里的 tag 不算 |
+| `scripts/guard/policy.json` | `invariants`：19 条 ID → 中文定义，作为唯一清单 |
+| `scripts/guard/rules/index.mjs` | 第 12 条规则注册 |
+| `server/tests/oidc-invariants.mjs`（新） | 真 fake OP：O1 issuer、O2 state 一次性/过期/nonce、O3 S256/verifier/重放、O4 HMAC 拒绝、O5 azp、O6 userinfo sub 正反、O7 allowedDomains/大小写归一 |
+| `server/tests/invariants-smoke.mjs`（新） | K5 未绑定设备、K6 改密/改邮箱不改密钥集合 |
+| 既有用例 | M1 404、M2 禁用/删除/自删、M3 唯一且不可推导、M4 预算/队列/匿名限流、M5 真实写路径审计、K1 存活密钥、K2 摘要+密封、K3 吊销、K4 读/铸/吊销、K7 轮换回显 |
+
+根契约：§3.2 由 11 条改为 **12 条**并新增规则行；§6.1 要求 `[O1]`…`[K7]`，缺用例 = P1；
+§2/§3 测试套件 12→14；C3 标题 K1–K7；§16 第 6 项标记完成。
+
+## 判别测试（实际执行）
+
+```
+移除 [K7] 标签                         → 不变量 K7 没有具名用例（18/19）
+在原行尾加 // [K7]                    → 仍然红（注释不算）
+改成 /* [K7] */ 块注释                 → 仍然红
+policy 增加 O8 但没有用例              → 红（19/20）
+恢复                                   → 19/19，guard 12/12 绿
+```
+
+## 审核
+
+`reviewer-m3` 首轮 **REJECT**（2×P1）：
+
+1. 规则扫描整文件文本，行尾/块注释与裸字符串都能冒充用例 → 已改为「第一个字符串字面量 + 字符串感知去注释」；
+2. `[M5]` 只断言 `Array.isArray`，空审计表也能绿 → 已改为真实写路径：`POST /account/device-keys` 后
+   从 `/admin/audit` 找到 `device_key.created`，断言 actor=alice、userId、detail.keyId。
+
+复评 **APPROVE**：P1 全部关闭，10 条 P2 落地；剩余 P2（M4 三层未全标、O3 属 OP 性质、K4 吊销路径、
+计数审计）不阻塞，已记录。
+
+## 门禁
+
+```
+pnpm verify（56 s）  build ✓ check ✓ guard 12/12 ✓ test ✓
+  protocol 94；server 290（store 37 · lifecycle 42 · http 60 · oidc-invariants 14 · invariants 2 …）
+  合计 384 条断言，0 failed
+pnpm test:pg：pg-smoke 9 passed，其余套件全绿
+Chromium 70/70；真 SMTP + OIDC 走查 60/60
+```
+
+## 剩余
+
+- M4：版本 1.15.16、三处同步、tag、CI/Release/镜像核对。

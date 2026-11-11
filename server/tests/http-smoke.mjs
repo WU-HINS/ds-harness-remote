@@ -91,12 +91,17 @@ const adminId = adminRow.body.user && adminRow.body.user.id
 const disableAdmin = await req('/api/v1/admin/users/' + adminId, { method: 'PATCH', headers: { 'content-type': 'application/json', cookie: adminCookie }, body: JSON.stringify({ toggle: true }) })
 const deleteAdmin = await req('/api/v1/admin/users/' + adminId, { method: 'DELETE', headers: { cookie: adminCookie } })
 const resetAdminPw = await req('/api/v1/admin/users/' + adminId, { method: 'PATCH', headers: { 'content-type': 'application/json', cookie: adminCookie }, body: JSON.stringify({ password: 'hijacked-password' }) })
-check('admin accounts cannot be disabled', disableAdmin.status === 409 && disableAdmin.body.error.code === 'ADMIN_PROTECTED', String(disableAdmin.status))
+check('[M2] admin accounts cannot be disabled', disableAdmin.status === 409 && disableAdmin.body.error.code === 'ADMIN_PROTECTED', String(disableAdmin.status))
 check('admin accounts cannot be deleted', deleteAdmin.status === 409 && deleteAdmin.body.error.code === 'ADMIN_PROTECTED', String(deleteAdmin.status))
 check('admin password reset removed', resetAdminPw.status === 409, String(resetAdminPw.status))
+const me = await req('/api/v1/auth/me', { headers: { cookie: adminCookie } })
+const selfDelete = await req('/api/v1/admin/users/' + me.body.user.id, { method: 'DELETE', headers: { cookie: adminCookie } })
+check('[M2] an admin cannot delete itself', selfDelete.status === 409 && selfDelete.body.error.code === 'CANNOT_DELETE_SELF', String(selfDelete.status))
 const adminKeyApi = await req('/api/v1/admin/users/' + adminId + '/device-keys', { headers: { cookie: adminCookie } })
 const adminKeyPost = await req('/api/v1/admin/users/' + adminId + '/device-keys', { method: 'POST', headers: { 'content-type': 'application/json', cookie: adminCookie }, body: JSON.stringify({ label: 'x' }) })
-check('admin key APIs are gone', adminKeyApi.status === 404 && adminKeyPost.status === 404, adminKeyApi.status + '/' + adminKeyPost.status)
+const adminKeyDelete = await req('/api/v1/admin/users/' + adminId + '/device-keys/00000000-0000-0000-0000-000000000000', { method: 'DELETE', headers: { cookie: adminCookie } })
+check('[K4] admin key APIs are gone', adminKeyApi.status === 404 && adminKeyPost.status === 404 && adminKeyDelete.status === 404,
+  adminKeyApi.status + '/' + adminKeyPost.status + '/' + adminKeyDelete.status)
 
 check('admin page has section tabs', adminHtml.includes('class="subnav"') && adminHtml.includes('href="/admin/settings"'))
 check('tables start with skeleton rows', adminHtml.includes('class="sk"') && adminHtml.includes('aria-busy="true"'))
@@ -180,9 +185,9 @@ await httpsApp.close()
 let limited = false
 for (let i = 0; i < 80; i++) {
   const r = await req('/api/v1/auth/login', { method: 'POST', ...json({ username: 'nobody', password: 'wrong-password-123' }) })
-  if (r.status === 429) { limited = r.headers.get('retry-after') === '60' || r.status === 429; break }
+  if (r.status === 429) { limited = r.headers.get('retry-after') === '60'; break }
 }
-check('anonymous rate limit engages', limited)
+check('[M4] anonymous rate limit engages', limited)
 
 // runtime public origin
 const adminRelogin = await req('/api/v1/auth/login', { method: 'POST', headers: { 'content-type': 'application/json', 'x-real-ip': '198.51.100.7' }, body: JSON.stringify({ email: 'admin@example.com', password: 'admin-password-123' }) })

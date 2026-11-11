@@ -32,7 +32,7 @@ const aliceId = created.body.user.id
 let users = await req('/api/v1/admin/users', { headers: { cookie: admin } })
 const aliceRow = users.body.users.find(u => u.username === 'alice')
 // The suffix is base64url with non-alphanumerics stripped, so its length varies.
-check('3 virtual device username', /^dev-[a-z0-9]{4,10}$/.test(aliceRow.deviceUsername), aliceRow.deviceUsername)
+check('[M3] 3 virtual device username', /^dev-[a-z0-9]{4,10}$/.test(aliceRow.deviceUsername), aliceRow.deviceUsername)
 check('4 exactly one initial key', aliceRow.deviceKeys === 1)
 
 // Keys belong to the owner: the console never sees or mints them.
@@ -41,9 +41,9 @@ const aliceCookie = cookieOf(aliceLogin)
 const firstKeys = await req('/api/v1/account/device-keys', { headers: { cookie: aliceCookie } })
 check('4b owner lists own keys', firstKeys.status === 200 && firstKeys.body.keys.length === 1)
 const defaultKey = firstKeys.body.keys[0]
-check('4c owner can reveal the key', typeof defaultKey.key === 'string' && defaultKey.key.length >= 20, String(defaultKey.key || '').slice(0, 6))
+check('[K2] 4c owner can reveal the key', typeof defaultKey.key === 'string' && defaultKey.key.length >= 20, String(defaultKey.key || '').slice(0, 6))
 const adminKeys = await req('/api/v1/admin/users/' + aliceId + '/device-keys', { headers: { cookie: admin } })
-check('4d admin cannot read user keys', adminKeys.status === 404, String(adminKeys.status))
+check('[K4] 4d admin cannot read user keys', adminKeys.status === 404, String(adminKeys.status))
 
 const t1 = await req('/api/v1/auth/login', { method: 'POST', ...json({ username: 'alice', password: defaultKey.key }) })
 check('5 standard username works for devices by default', t1.status === 200 && typeof t1.body.token === 'string')
@@ -54,6 +54,9 @@ const key2 = await req('/api/v1/account/device-keys', { method: 'POST', headers:
 check('7 second key issued', key2.status === 201 && typeof key2.body.id === 'string')
 const t2 = await req('/api/v1/auth/login', { method: 'POST', ...json({ username: aliceRow.deviceUsername, password: key2.body.key }) })
 check('8 virtual device username works', t2.status === 200)
+const keyAudit = await req('/api/v1/admin/audit?limit=50', { headers: { cookie: admin } })
+const keyAuditRow = keyAudit.body.items.find((a) => a.action === 'device_key.created' && a.detail?.keyId === key2.body.id)
+check('[M5] key creation writes an audit row with actor and target', keyAuditRow?.actor === 'alice' && keyAuditRow?.userId === aliceId, JSON.stringify(keyAuditRow))
 const regB = await req('/api/v1/devices/register', { method: 'POST', headers: { 'content-type': 'application/json', authorization: 'Bearer ' + t2.body.token }, body: JSON.stringify({ v: 1, device: { deviceId: 'alice-tablet', name: 'tablet', role: 'host', identityKey: 'b'.repeat(32) } }) })
 check('9 device B registered', regB.status === 200)
 
@@ -61,7 +64,7 @@ const listKeys = async () => (await req('/api/v1/account/device-keys', { headers
 let keys = await listKeys()
 const byId = (id) => keys.find(k => k.id === id)
 const firstKeyId = keys.filter(k => k.id !== key2.body.id)[0].id
-check('10 counts are per key', byId(firstKeyId).deviceCount === 1 && byId(key2.body.id).deviceCount === 1,
+check('[K1] 10 counts are per key', byId(firstKeyId).deviceCount === 1 && byId(key2.body.id).deviceCount === 1,
   JSON.stringify(keys.map(k => [k.label, k.deviceCount])))
 
 // 会话令牌不得换设备令牌
@@ -71,7 +74,7 @@ const sessionReg = await req('/api/v1/devices/register', { method: 'POST', heade
 check('11 account token enrols a device (legacy compat)', sessionReg.status === 200, String(sessionReg.status))
 
 const adminRevoke = await req('/api/v1/account/device-keys/' + firstKeyId, { method: 'DELETE', headers: { cookie: admin } })
-check('11b other accounts cannot revoke this key', [401, 404].includes(adminRevoke.status), String(adminRevoke.status))
+check('[M1] 11b other accounts cannot revoke this key', adminRevoke.status === 404, String(adminRevoke.status))
 const revoked = await req('/api/v1/account/device-keys/' + firstKeyId, { method: 'DELETE', headers: { cookie: aliceCookie } })
 check('12 revoke by key id', revoked.status === 200)
 check('13 device A loses access', (await req('/api/v1/me', { headers: { authorization: 'Bearer ' + regA.body.accessToken } })).status === 401)
@@ -84,7 +87,7 @@ check('15 revoked deviceId cannot re-enrol', revive.status === 409, String(reviv
 check('16 revoked device stays dead', (await req('/api/v1/me', { headers: { authorization: 'Bearer ' + regA.body.accessToken } })).status === 401)
 const t4 = await req('/api/v1/auth/login', { method: 'POST', ...json({ username: aliceRow.deviceUsername, password: key2.body.key }) })
 const fresh = await req('/api/v1/devices/register', { method: 'POST', headers: { 'content-type': 'application/json', authorization: 'Bearer ' + t4.body.token }, body: JSON.stringify({ v: 1, device: { deviceId: 'alice-laptop-2', name: 'laptop', role: 'host', identityKey: 'a'.repeat(32) } }) })
-check('17 new deviceId enrols with the surviving key', fresh.status === 200)
+check('[K1] 17 new deviceId enrols with the surviving key', fresh.status === 200)
 keys = await listKeys()
 check('18 surviving key counts both devices', byId(key2.body.id).deviceCount === 2, String(byId(key2.body.id).deviceCount))
 check('28 revoked key still reports zero', byId(firstKeyId).deviceCount === 0)
@@ -128,7 +131,7 @@ check('29 rotated key works for devices', (await req('/api/v1/auth/login', { met
 check('29 old secret stops working', (await req('/api/v1/auth/login', { method: 'POST', ...json({ username: 'alice', password: key3.body.key }) })).status === 401)
 const afterKeys = (await req('/api/v1/account/device-keys', { headers: { cookie: aliceCookie2 } })).body.keys
 const rotatedRow = afterKeys.find((k) => k.id === key3.body.id)
-check('29 rotated key stays revealable', rotatedRow?.revealable === true && rotatedRow?.key === rotated.body.key)
+check('[K7] 29 rotated key stays revealable', rotatedRow?.revealable === true && rotatedRow?.key === rotated.body.key)
 const foreignRotate = await req('/api/v1/account/device-keys/' + key3.body.id + '/rotate', { method: 'POST', headers: { cookie: admin } })
 check('29 other accounts cannot rotate this key', foreignRotate.status === 404, String(foreignRotate.status))
 const audit = await req('/api/v1/admin/audit?limit=50', { headers: { cookie: admin } })
