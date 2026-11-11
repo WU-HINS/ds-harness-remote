@@ -176,7 +176,7 @@
 |---|---|
 | `server/src/app.ts` | 665（1089→665；累计 1090→665：分组路由表 + `routes/*` handler 模块） |
 | `server/src/store-pg.ts` | 607（612→607：审计白名单与失败上抛、单写者租约失败上抛；累计 799→607） |
-| `server/src/gateway.ts` | 621（733→621：抽出 `gateway-admission.ts`，D11 已关闭） |
+| `server/src/gateway.ts` | 556（621→556：`gateway-support.ts` + 认证帧路径；累计 733→556） |
 | `packages/protocol/src/index.ts` | 1473 |
 
 规则：
@@ -382,7 +382,7 @@
 |---|---|---|---|
 | D1 | `server/src/app.ts` 1090 行：路由分发、handler、页面装配混在一处 | 已关闭 | 已拆出分组路由表与 `routes/admin.ts`、`routes/auth-flows.ts`；`app.ts` 1089→665（累计 1090→665）；分组表在 app.ts，exact 路径在 `routes/*`，`route-doc-sync` 同时扫描两者 |
 | D2 | `server/src/store-pg.ts` 770 行：连接、认证、设备、审计、设置混在一个类 | 已关闭 | 已拆出 `store/core.ts`、`store/device-keys.ts`、`store/sessions.ts`、`store/email-codes.ts`；`store-pg.ts` 770→612（拆分）、612→607（审计/租约修复），Store 仍是唯一事务与数据入口 |
-| D3 | `server/src/gateway.ts` 621 行：连接状态机与链路转发仍在同一类 | P2 | 拆出连接状态机（帧窗口/带宽/队列已随 D11 抽出） |
+| D3 | `server/src/gateway.ts` 556 行：连接状态机与链路转发仍在同一类 | P2 | 拆出连接状态机（帧窗口/带宽/队列已随 D11、类型/诊断已随 D13 抽出） |
 | D4 | `packages/protocol/src/index.ts` 1473 行 | P2 | 按帧类型拆文件，导出面不变 |
 | D5 | `app.ts` 里仍有 1 处 `console.warn`（route_not_found 兜底） | P2 | 接入 `logger.ts` 后删除该豁免 |
 | D6 | CSP 的 `style-src 'unsafe-inline'` | P2 | 样式外置或 nonce 化后收紧 |
@@ -391,8 +391,8 @@
 | D9 | 上游协议基线曾未钉版本号，仅有 `fixtures/protocol/v1` 作证 | 已关闭 | `fixtures/protocol/v1/manifest.json` 已记录上游提交 `14037e78f45e14f7a5ad56c2266944548def7e3d`（协议包 0.5.21），README 记录来源与核对方式 |
 | D10 | 迁移遗留密钥（无密封副本）曾只能标记为不可回显 | 已关闭 | 已暴露 `POST /api/v1/account/device-keys/:id/rotate`（原地换密、保留绑定、审计 `device_key.rotated`），界面提供「轮换」；store / HTTP / 浏览器三层断言 |
 | D11 | `gateway.ts` HEAD 677 → 733（未提交中间态）→ 621 | 已关闭（P1） | 已抽出 `server/src/gateway-admission.ts`（帧窗口、掉线链路墓碑、加权带宽、发送队列），`gateway.ts` 733→621、预算 621；回归 `server/tests/admission-smoke.mjs`（24 条断言）。 |
-| D12 | `gateway.ts` 的 `shouldQueue` 调用点只有单元测试，没有 WebSocket 级回归；改回 take-then-enqueue 仍可能全绿 | P2 | 增加网关级中继顺序用例（真实 WS 或可注入 transport） |
-| D13 | 四个预算文件全部 0 余量（app 665 / store 607 / gateway 621 / protocol 1473），file-budget 在等于预算时不提示 | P2 | 拆分任一文件，或让 file-budget 在 equality 时输出「已到上限」 |
+| D12 | `gateway.ts` 的 `shouldQueue` 调用点只有单元测试 | 已关闭 | `gateway-admission-integration.mjs` 直接驱动 Gateway：耗尽额度→排队→等待补额→后帧仍入队（3 条断言）；改回 take-then-enqueue 会红 |
+| D13 | 四个预算文件全部 0 余量（app 665 / store 607 / gateway 621 / protocol 1473），file-budget 在 equality 时无提示 | 已关闭 | `gateway.ts` 已拆到 556（`gateway-support.ts` + 认证帧路径）；`file-budget` 在等于预算时输出「已到预算上限」；app/store/protocol 仍零余量，后续按需拆 |
 | D14 | M4 的每用户请求/分钟与并发连接两层没有具名用例；S1–S11 仍无覆盖门禁 | P2 | 补 `[M4]` 用例，并把 invariant-coverage 扩展到 S1–S11 |
 | D15 | 发布线倒挂：v1.16.0–v1.16.2 是 2026-11-09 的历史过渡版本（含旧内容），当前分支线为 1.15.16；若发 1.15.17，tag 数值低于已有的 1.16.2，`latest` 语义倒退 | P2 | 下一版改用 1.17.0，或经授权删除 1.16.x tag/镜像后继续 1.15.x |
 

@@ -16,88 +16,19 @@ import {
   type TransportSelectedPayload,
 } from '@dsh-remote/protocol'
 import { ApiError, Store } from './store-pg.js'
-import { Logger, type LogLevel } from './logger.js'
-import { normalizeGatewayOptions, normalizeMaxFramesPerSec, type GatewayTimingOptions } from './config.js'
+import { Logger } from './logger.js'
+import { normalizeGatewayOptions, normalizeMaxFramesPerSec } from './config.js'
 import { DroppedLinkRegistry, GatewayAdmission } from './gateway-admission.js'
 
-export interface GatewayOptions extends GatewayTimingOptions {
-  maxFramesPerSec?: number
-  /** Server-wide relay budget in bytes per second; ordinary accounts only. 0 disables. */
-  relayBytesPerSecond?: number
-  logLevel?: LogLevel
-  logger?: Logger
-  /** Advertise `transport.turn` (and accept TURN credential requests). */
-  turnEnabled?: boolean | (() => boolean)
-}
+import type { GatewayOptions } from './gateway-support.js'
+import {
+  MAX_ICE_CANDIDATES_PER_CONNECTION, WEBRTC_FALLBACK_TIMEOUT_MS, SUPPORTED_TRANSPORTS, TRANSPORT_NAMES,
+  modernHost, safeText, requestPath, socketAddress, errorName, errorCode,
+  type ConnectionState, type Peer, type Link, type TransportName,
+} from './gateway-support.js'
 
-/**
- * Frames are only interpreted in `awaiting_hello` or `authenticated`;
- * `closing`/`closed` prevents a late hello from registering a peer.
- */
-type ConnectionState = 'awaiting_hello' | 'authenticated' | 'closing' | 'closed'
-
-type Peer = { ws: WebSocket; id: string; role: 'host' | 'client'; accountRole: 'admin' | 'user'; ownerId: string; capabilities: string[]; version: string; lastPong: number; nonce?: string; evictedTombstoneUntil?: number }
-type Link = { id: string; host: string; client: string; stage: 'pending' | 'accepted' | 'handshake' | 'ready'; created: number; counters: Map<string, number>; preferredTransports: TransportName[]; iceCandidates: number }
-/** Protocol v1 default: at most 256 ICE candidates per logical connection. */
-export const MAX_ICE_CANDIDATES_PER_CONNECTION = 256
-/** Mirrors docs/protocol.md: Clients use max(server, local) and default to 12 s. */
-const WEBRTC_FALLBACK_TIMEOUT_MS = 12_000
-const SUPPORTED_TRANSPORTS = ['transport.lan', 'transport.p2p', 'transport.turn', 'transport.relay'] as const
-const TRANSPORT_NAMES = ['lan', 'p2p', 'turn', 'relay'] as const
-type TransportName = (typeof TRANSPORT_NAMES)[number]
-
-function modernHost(version: string): boolean {
-  const match = /^v?(\d+)\.(\d+)\.(\d+)(?:\+.*)?$/.exec(version)
-  if (!match) return false
-  const [major, minor, patch] = match.slice(1).map(Number)
-  return major! > 0 || (minor! > 2 || (minor === 2 && patch! >= 15))
-}
-
-const SAFE_TEXT = /^[A-Za-z0-9_.:-]+$/
-const SAFE_PATH = /^[A-Za-z0-9/._~-]*$/
-const SAFE_ADDRESS = /^[0-9a-fA-F:.]{2,45}$/
-const SAFE_ERROR_NAME = /^[A-Za-z][A-Za-z0-9]{0,31}$/
-const SAFE_ERROR_CODE = /^[A-Z0-9_]{1,32}$/
-
-/** Diagnostics must never echo client-supplied text verbatim. */
-function safeText(value: unknown, max = 64): string | undefined {
-  return typeof value === 'string' && SAFE_TEXT.test(value) ? value.slice(0, max) : undefined
-}
-
-/** Parse the upgrade request path, dropping the query string (it may carry a token). */
-function requestPath(rawUrl: string | undefined): string {
-  if (typeof rawUrl !== 'string' || rawUrl === '') return ''
-  const end = rawUrl.search(/[?#]/)
-  const path = end === -1 ? rawUrl : rawUrl.slice(0, end)
-  return SAFE_PATH.test(path) ? path.slice(0, 64) : '<invalid>'
-}
-
-function socketAddress(socket: unknown): string | undefined {
-  try {
-    const address = (socket as { remoteAddress?: unknown } | null)?.remoteAddress
-    return typeof address === 'string' && SAFE_ADDRESS.test(address) ? address : undefined
-  } catch {
-    return undefined
-  }
-}
-
-function errorName(error: unknown): string {
-  try {
-    const name = error instanceof Error ? error.name : undefined
-    return typeof name === 'string' && SAFE_ERROR_NAME.test(name) ? name : 'Error'
-  } catch {
-    return 'Error'
-  }
-}
-
-function errorCode(error: unknown): string | undefined {
-  try {
-    const code = (error as { code?: unknown } | null | undefined)?.code
-    return typeof code === 'string' && SAFE_ERROR_CODE.test(code) ? code : undefined
-  } catch {
-    return undefined
-  }
-}
+export { MAX_ICE_CANDIDATES_PER_CONNECTION } from './gateway-support.js'
+export type { GatewayOptions } from './gateway-support.js'
 
 export class Gateway {
   readonly peers = new Map<string, Peer>()
@@ -386,7 +317,7 @@ export class Gateway {
             deviceId: safeText(peer.id),
             role: peer.role,
             clientVersion: safeText(peer.version),
-            capabilities: peer.capabilities.filter(capability => typeof capability === 'string' && SAFE_TEXT.test(capability)).slice(0, 8),
+            capabilities: peer.capabilities.filter(capability => safeText(capability) !== undefined).slice(0, 8),
           })
           this.send(peer, createControlFrame('hello.ack', {
             protocol: 1,
@@ -409,20 +340,7 @@ export class Gateway {
           return
         }
         if (!admission.count(frameBytes)) throw new ApiError('RATE_LIMITED')
-        // Relay frames wait in order; dropping one would break the peer's counters.
-        if (frame.type === 'relay' && peer.accountRole !== 'admin' && this.admission.relay.shouldQueue(peer.id, peer.ownerId, frameBytes)) {
-          const active = peer
-          if (!this.admission.relay.enqueue(active.id, active.ownerId, frame, frameBytes, next => {
-            if (this.peers.get(active.id) !== active) return
-            try { this.handle(active, next) } catch (error) {
-              // The link may have died while the frame waited: that is stale
-              // traffic, not a reason to kill the whole control connection.
-              if (!(error instanceof ApiError && error.code === 'CONNECTION_NOT_FOUND')) this.disconnect(active.id, 'INVALID_MESSAGE')
-            }
-          })) throw new ApiError('RATE_LIMITED')
-          return
-        }
-        this.handle(peer, frame)
+        this.processAuthenticatedFrame(peer, frame, frameBytes)
       } catch (error) {
         const code = error instanceof ApiError ? error.code : 'INVALID_MESSAGE'
         this.logger.warn('ws_message_error', {
@@ -452,6 +370,23 @@ export class Gateway {
       }
     })
   }
+  /** WebSocket frame path: relay frames queue while a queue exists, so a live
+   *  frame can never overtake one (a counter gap is a protocol violation). */
+  private processAuthenticatedFrame(peer: Peer, frame: ControlFrame, frameBytes: number): void {
+    if (frame.type === 'relay' && peer.accountRole !== 'admin' && this.admission.relay.shouldQueue(peer.id, peer.ownerId, frameBytes)) {
+      const replay = (next: ControlFrame): void => {
+        if (this.peers.get(peer.id) !== peer) return
+        try { this.handle(peer, next) } catch (error) {
+          // A dead link is stale traffic, not a reason to kill the control connection.
+          if (!(error instanceof ApiError && error.code === 'CONNECTION_NOT_FOUND')) this.disconnect(peer.id, 'INVALID_MESSAGE')
+        }
+      }
+      if (!this.admission.relay.enqueue(peer.id, peer.ownerId, frame, frameBytes, replay)) throw new ApiError('RATE_LIMITED')
+      return
+    }
+    this.handle(peer, frame)
+  }
+
   private handle(peer: Peer, frame: ControlFrame): void {
     const p = frame.payload as Record<string, unknown>
     if (frame.type === 'ping') { this.send(peer, createControlFrame('pong', { nonce: p.nonce })); return }

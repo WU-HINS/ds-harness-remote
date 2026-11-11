@@ -3,7 +3,7 @@
   "budgets": {
     "server/src/app.ts": 665,
     "server/src/store-pg.ts": 607,
-    "server/src/gateway.ts": 621,
+    "server/src/gateway.ts": 556,
     "packages/protocol/src/index.ts": 1473
   },
   "budgetedAbove": 600,
@@ -78,7 +78,7 @@
     }
   ],
   "budgetNotes": {
-    "server/src/gateway.ts": "733→621：抽出 gateway-admission.ts（帧窗口 / 带宽 / 队列），D11 已关闭；预算 621 只降不升",
+    "server/src/gateway.ts": "621→556：gateway-support.ts + 认证帧路径；预算 556 只降不升",
     "server/src/store-pg.ts": "612→607：审计白名单与失败上抛、单写者租约失败上抛；累计 799→607",
     "server/src/app.ts": "1089→665（累计 1090→665）：分组路由表 + routes/* handler 模块；预算 665 只降不升"
   },

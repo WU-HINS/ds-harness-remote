@@ -28,6 +28,8 @@ export const rule = {
           violations.push(ctx.violation(key, budget + 1, `${lines} 行，超出预算 ${budget} 行 (+ ${lines - budget})`))
         } else if (lines < budget) {
           notes.push(`${key} 可下调预算 ${budget} → ${lines}`)
+        } else {
+          notes.push(`${key} 已到预算上限 ${budget}`)
         }
       }
     }
