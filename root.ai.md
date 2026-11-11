@@ -86,7 +86,7 @@
 | 仓库形态 | pnpm workspace：`server`、`web`、`packages/*` | `pnpm-workspace.yaml` |
 | 上游 | liguobao/ds-harness-remote（完整协议）；本仓库是其服务端最小面独立实现 | 本文 §0.1 / §0.2 |
 | 本仓库独有能力 | C1 OIDC、C2 多用户、C3 单用户多密钥 | 本文 §6.1 |
-| 发布版本 | 1.15.15（`package.json`、`server/package.json`、`web/package.json` 三处同步） | `node scripts/guard/index.mjs --only version-lockstep` |
+| 发布版本 | 1.15.16（`package.json`、`server/package.json`、`web/package.json` 三处同步） | `node scripts/guard/index.mjs --only version-lockstep` |
 | 协议包版本 | 0.5.21，独立语义化，服务端以 `workspace:*` 依赖 | `packages/protocol/package.json` |
 | Node | `engines: >=22`；CI 用 24.9.0；镜像用 `node:22-bookworm-slim` | 三处都不得低于 engines |
 | 包管理器 | pnpm 9.15.4（`packageManager` 字段与 CI 一致） | `package.json` |

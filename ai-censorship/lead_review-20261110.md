@@ -707,3 +707,47 @@ Chromium 70/70；真 SMTP + OIDC 走查 60/60
 ## 剩余
 
 - M4：版本 1.15.16、三处同步、tag、CI/Release/镜像核对。
+
+---
+
+# 第十二轮（2026-11-11）· M4：发布 1.15.16
+
+## 版本
+
+`package.json` / `server/package.json` / `web/package.json` 三处同步 **1.15.16**；
+协议包保持独立语义化 **0.5.21**；`root.ai.md` §2 发布版本同步。
+
+## 交付内容（1.15.15 → 1.15.16）
+
+| 里程碑 | 结果 |
+|---|---|
+| M1 / D2 | `store-pg.ts` 770→612；`store/{core,device-keys,sessions,email-codes}`；SQL containment 支持 `store/*` |
+| M2 / D1 | `app.ts` 1090→665；`routes/admin.ts`、`routes/auth-flows.ts`；分组路由表 |
+| M3 | 第 12 条门禁 `invariant-coverage`；O1–O7 / M1–M5 / K1–K7 共 19 条具名用例 |
+| D10 | 设备密钥原地轮换 + 遗留密钥出路（前一版已发；本版保持） |
+
+## 最终门禁
+
+```
+pnpm verify（56 s）  build ✓ check ✓ guard 12/12 ✓ test ✓
+  protocol 9 files / 94 tests
+  server 290 条：store 37 · lifecycle 42 · http 60 · admission 24 · oidc-invariants 14 ·
+                 invariants 2 · runtime 16 · auth 23 · oidc 18 · account 15 · journey 12
+  合计 384 条断言，0 failed
+pnpm test:pg（PostgreSQL 15.19）  pg-smoke 9 passed
+Chromium（真库）                 70/70
+全业务走查（真 SMTP + OIDC）     60/60
+```
+
+## 兼容性
+
+- 上游协议帧/错误码/关闭语义未改；`packages/protocol` 未动。
+- HTTP 行为由 M2 的 token 级等价复核（[auth 3248 / admin 2520]）+ 全量 HTTP/走查保证。
+- 新增的只是门禁与具名用例，不改运行时行为。
+
+## 发布步骤
+
+1. 三处版本同步 → `chore(release): 1.15.16`
+2. `git tag v1.15.16` → 推送分支与 tag
+3. CI（Check and test / Build image / Store smoke on PostgreSQL）与 Release（Validate tag / Create release / Publish image）
+4. 镜像 `ghcr.io/wu-hins/ds-harness-remote/server` → `1.15.16` / `1.15` / `latest`
