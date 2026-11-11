@@ -116,6 +116,8 @@ check('admin creates bob', bob.status === 201 && bob.body.deviceKey === undefine
 const resetUserPw = await req('/api/v1/admin/users/' + created.body.user.id, { method: 'PATCH', headers: { 'content-type': 'application/json', cookie: adminCookie }, body: JSON.stringify({ password: 'hijacked-password' }) })
 const aliceLogin = await req('/api/v1/auth/login', { method: 'POST', ...json({ username: 'alice', password: 'alice-password-123' }) })
 check('admin cannot reset a user password', resetUserPw.status === 200 && aliceLogin.status === 200, resetUserPw.status + ' | ' + aliceLogin.status)
+const noopAudit = await req('/api/v1/admin/audit?limit=50', { headers: { cookie: adminCookie } })
+check('a password-only PATCH does not fake a disable audit', !noopAudit.body.items.some((a) => a.action === 'user.updated' && a.userId === created.body.user.id && a.detail?.disabled === true))
 
 // Users enrol with their own password: the console never mints keys for them.
 async function deviceFor(username, password, deviceId) {

@@ -37,10 +37,9 @@ Each user has one virtual device username (`dev-xxxxxxxx`) and any number of dev
 - `POST /api/v1/auth/login` with the device key returns a short-lived registration ticket, which
   `POST /api/v1/devices/register` exchanges for access/refresh tokens.
 - A web/account token may enrol a device (`POST /api/v1/devices/register` with an account
-  token), which is what the original clients expect. Under SSO-only this is refused, the
-  same way a password may not act as a device secret.
-- While SSO-only is off, the account password also works as a device secret. Those devices carry no key
-  binding, are listed as `(未绑定密钥)`, and are revoked when the password changes.
+  token), which is what the original clients expect. Under SSO-only this is refused.
+- The account password also works as a device secret, **regardless of SSO-only**. Those devices carry
+  no key binding, are listed as `(未绑定密钥)`, and are revoked when the password changes.
 
 Keys are owned by the account, not by the console: users list, create, reveal, rotate and revoke
 them on **我的账户**, and the plaintext is stored encrypted (AES-256-GCM) so it can be shown again.

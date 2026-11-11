@@ -34,6 +34,14 @@ const broken = new Store({ query: async () => { throw new Error('db down') } })
 let surfaced = false
 try { await broken.audit('device.removed') } catch { surfaced = true }
 check('[M5] audit failures are not swallowed', surfaced)
+const noConnect = new Store({ connect: async () => { throw new Error('connect refused') } })
+let leaseFailed = false
+try { await noConnect.acquireInstanceLease() } catch { leaseFailed = true }
+check('lease acquisition failure is fatal', leaseFailed)
+const lockedStore = new Store({ connect: async () => ({ query: async () => ({ rows: [{ ok: false }] }), release: () => {} }) })
+let locked = false
+try { await lockedStore.acquireInstanceLease() } catch (error) { locked = error instanceof ApiError && error.code === 'INSTANCE_LOCKED' }
+check('a second writer is refused', locked)
 
 console.log('\n' + pass + ' passed, ' + fail + ' failed')
 process.exitCode = fail === 0 ? 0 : 1

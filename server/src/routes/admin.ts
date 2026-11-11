@@ -204,8 +204,10 @@ export async function handleAdminApi(
       // Administrators are immutable from the console: no disable, no password
       // reset, no role change. Only their own credentials changes apply.
       if (target.role === 'admin') throw new ApiError('ADMIN_PROTECTED', 409, '管理员账号不可禁用或删除')
-      if (input.toggle === true) await deps.store.setDisabled(id, !target.disabled)
-      await deps.store.audit('user.updated', admin.username, id, { disabled: !target.disabled })
+      if (input.toggle === true) {
+        await deps.store.setDisabled(id, !target.disabled)
+        await deps.store.audit('user.updated', admin.username, id, { disabled: !target.disabled })
+      }
       return deps.json(res, 200, { status: 'ok' })
     }
     if (method === 'DELETE' && !match[2]) {

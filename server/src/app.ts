@@ -186,15 +186,14 @@ export function createApp(settings: Settings, deps: { pool?: Pool; mailer?: Mail
     const host = (trusted ? singleHeader(req, 'x-forwarded-host') : undefined) ?? req.headers.host ?? 'localhost'
     return (proto === 'https' ? 'https' : 'http') + '://' + host
   }
-  // Emergency escape hatch: DSH_BREAK_GLASS_PASSWORD=1 keeps password login
-  // usable even in SSO-only mode. Intended for lockout recovery only.
+  // Emergency: DSH_BREAK_GLASS_PASSWORD=1 keeps password login usable in SSO-only.
   const breakGlass = process.env.DSH_BREAK_GLASS_PASSWORD === '1'
   type OidcClaims = { issuer: string; subject: string; email?: string; emailVerified: boolean; name?: string }
   const oidcPending = new Map<string, { claims: OidcClaims; userId: string; expires: number }>()
   const finishOidc = (res: ServerResponse, user: { id: string; username: string }, origin: string) => {
-    void store.audit('oidc.success', user.username, user.id)
     const ttl = runtime.limits.sessionTtlMs
     return (async () => {
+      await store.audit('oidc.success', user.username, user.id)
       const session = await store.createSession(user.id, ttl)
       return redirect(res, '/', { 'set-cookie': cookie('dsh_session', session.token, ttl, origin.startsWith('https:')) })
     })()
@@ -563,7 +562,7 @@ export function createApp(settings: Settings, deps: { pool?: Pool; mailer?: Mail
       }
       if (method === 'DELETE' && path === '/api/v1/devices/self') {
         await store.revoke(target.deviceId, device.userId)
-        await store.audit('device.removed', target.deviceId, device.userId, { deviceId: target.deviceId, self: true })
+        await store.audit('device.removed', owner?.username ?? target.deviceId, device.userId, { deviceId: target.deviceId, self: true })
         return json(res, 200, { status: 'revoked' })
       }
       if (method === 'GET' && path === '/api/v1/devices') {
@@ -592,6 +591,7 @@ export function createApp(settings: Settings, deps: { pool?: Pool; mailer?: Mail
         const owned = (() => { try { return store.get(nameMatch[1]!) } catch { return undefined } })()
         if (!owned || owned.userId !== device.userId) throw new ApiError('DEVICE_NOT_FOUND', 404)
         await store.rename(nameMatch[1]!, name)
+        await store.audit('device.renamed', owner?.username ?? target.deviceId, device.userId, { deviceId: nameMatch[1], via: 'device' })
         return json(res, 200, { ...owned.descriptor, name, membershipId: membershipOf(device.userId) })
       }
       throw new ApiError('METHOD_NOT_FOUND', 404)

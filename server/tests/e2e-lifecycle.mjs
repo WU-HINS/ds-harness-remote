@@ -140,7 +140,14 @@ await req('/api/v1/account/device-keys/' + key3.body.id, { method: 'DELETE', hea
 const revokedRotate = await req('/api/v1/account/device-keys/' + key3.body.id + '/rotate', { method: 'POST', headers: { cookie: aliceCookie2 } })
 check('29 revoked keys cannot rotate', revokedRotate.status === 404, String(revokedRotate.status))
 
-// HTTP refresh and self-revoke: both must rotate/audit the device trail.
+// HTTP refresh, rename and self-revoke: each must rotate/audit the device trail.
+const renamed = await req('/api/v1/devices/alice-tablet/name', {
+  method: 'POST', headers: { authorization: 'Bearer ' + regB.body.accessToken, 'content-type': 'application/json' },
+  body: JSON.stringify({ name: 'tablet-renamed' }),
+})
+const renameAudit = await req('/api/v1/admin/audit?limit=50', { headers: { cookie: admin } })
+const renameRow = renameAudit.body.items.find((a) => a.action === 'device.renamed' && a.detail?.via === 'device')
+check('[M5] bearer device rename is audited', renamed.status === 200 && renameRow?.actor === 'alice' && renameRow?.userId === aliceId, JSON.stringify(renameRow))
 const refreshed = await req('/api/v1/auth/refresh', {
   method: 'POST', ...json({ deviceId: 'alice-tablet', refreshToken: regB.body.refreshToken }),
 })
@@ -148,7 +155,7 @@ check('refresh rotates tokens over HTTP', refreshed.status === 200 && refreshed.
 const selfRevoke = await req('/api/v1/devices/self', { method: 'DELETE', headers: { authorization: 'Bearer ' + regB.body.accessToken } })
 const selfAudit = await req('/api/v1/admin/audit?limit=50', { headers: { cookie: admin } })
 const selfRow = selfAudit.body.items.find((a) => a.action === 'device.removed' && a.detail?.self === true)
-check('[M5] device self-revoke is audited', selfRevoke.status === 200 && selfRow?.actor === 'alice-tablet' && selfRow?.userId === aliceId, JSON.stringify(selfRow))
+check('[M5] device self-revoke is audited', selfRevoke.status === 200 && selfRow?.actor === 'alice' && selfRow?.userId === aliceId, JSON.stringify(selfRow))
 
 await app.close()
 console.log(String.fromCharCode(10) + pass + ' passed, ' + fail + ' failed')

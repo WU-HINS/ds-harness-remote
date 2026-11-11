@@ -244,7 +244,7 @@
 | O4 | `id_token` 校验 `iss`/`aud`/`exp`（容忍 60s 漂移），算法白名单 RS/PS/ES，**禁止 none 与 HMAC** | 同上 |
 | O5 | 多 audience 或存在 `azp` 时，`azp` 必须等于 client_id | 同上 |
 | O6 | 用 userinfo 兜底取 email 时必须校验 `sub` 一致；失败不得放宽为「没有邮箱也能进」 | 同上 |
-| O7 | `allowedDomains` 非空时强制；email 一律小写归一；SSO-only 下密码登录/重置/换绑全部关闭，但设备密钥仍可登录 | `server/src/app.ts`、`docs/auth.md` |
+| O7 | `allowedDomains` 非空时强制；email 一律小写归一；SSO-only 下网页密码登录/重置/换绑全部关闭，但设备密钥与「账号密码作为设备凭据」仍可用 | `server/src/app.ts`、`docs/auth.md` |
 
 **C2 · 多用户（M1–M5）**
 
@@ -394,6 +394,7 @@
 | D12 | `gateway.ts` 的 `shouldQueue` 调用点只有单元测试，没有 WebSocket 级回归；改回 take-then-enqueue 仍可能全绿 | P2 | 增加网关级中继顺序用例（真实 WS 或可注入 transport） |
 | D13 | 四个预算文件全部 0 余量（app 665 / store 607 / gateway 621 / protocol 1473），file-budget 在等于预算时不提示 | P2 | 拆分任一文件，或让 file-budget 在 equality 时输出「已到上限」 |
 | D14 | M4 的每用户请求/分钟与并发连接两层没有具名用例；S1–S11 仍无覆盖门禁 | P2 | 补 `[M4]` 用例，并把 invariant-coverage 扩展到 S1–S11 |
+| D15 | 发布线倒挂：v1.16.0–v1.16.2 是 2026-11-09 的历史过渡版本（含旧内容），当前分支线为 1.15.16；若发 1.15.17，tag 数值低于已有的 1.16.2，`latest` 语义倒退 | P2 | 下一版改用 1.17.0，或经授权删除 1.16.x tag/镜像后继续 1.15.x |
 
 ---
 

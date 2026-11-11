@@ -57,7 +57,7 @@ pnpm start
 |---|---|---|
 | Web account | email + password, or OIDC | admin console, self-service |
 | Device | virtual username `dev-xxxxxxxx` + device key | enrolling clients |
-| Password as device secret | email + password | device login while SSO-only is **off** |
+| Password as device secret | email + password | device login, regardless of SSO-only (device credential, not web) |
 
 Each user can hold several device keys. Revoking a key immediately disconnects every device enrolled
 with it; revocation is terminal — the same device id cannot re-enrol.
