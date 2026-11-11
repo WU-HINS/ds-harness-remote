@@ -71,3 +71,11 @@ Chromium（真库）                 70/70
 - D15 关闭：1.17.0 > 1.16.2，`latest` 向前移动。
 - 最终门禁：verify **405** 断言（server 311 + protocol 94）、test:pg 9、browser 70/70、journey 60/60、guard 12/12。
 - tag `v1.17.0` 与镜像 `1.17.0 / 1.17 / latest` 在推送后核对。
+
+## 发布结果（v1.17.0）
+
+- CI run 43072565412：Check and test ✓ / Build image (no push) ✓ / Store smoke on PostgreSQL ✓
+- Release run 43072565756：Validate tag ✓ / Create GitHub release ✓ / Publish image ✓
+- Release：https://github.com/WU-HINS/ds-harness-remote/releases/tag/v1.17.0
+- 镜像：`ghcr.io/wu-hins/ds-harness-remote/server` → `1.17.0`、`1.17`、`latest`
+- tag `v1.17.0` → `ae31289`
