@@ -136,7 +136,7 @@
 | `sql-containment` | SQL 只出现在 `schema.ts`、`store-pg.ts` 与 `store/*` 领域模块（唯一豁免：就绪探针 `SELECT 1`） |
 | `console-containment` | `console.*` 只允许出现在 `logger.ts`、`main.ts`、`config.ts` |
 | `schema-idempotence` | 声明式 schema 每条语句重跑都无副作用；禁止 `DROP` |
-| `route-doc-sync` | `app.ts` 里每条 `/api/v1` 路由与 `:id` 家族都必须在 `docs/api.md` 出现；文档也不许写代码里没有的路由 |
+| `route-doc-sync` | `app.ts` 与 `routes/*` 里每条 `/api/v1` 路由与 `:id` 家族都必须在 `docs/api.md` 出现；文档也不许写代码里没有的路由 |
 | `doc-path-check` | 文档引用的仓库路径必须存在 |
 | `test-wiring` | 根 `test` 覆盖全部 workspace；每个用例文件都被某个 runner 执行；测试里的相对导入必须可解析；workspace 登记完整 |
 | `version-lockstep` | 三处发布版本一致；协议包独立版本；依赖必须是 `workspace:*` |
@@ -160,7 +160,7 @@
 | 禁令 | 为什么 | 谁在管 |
 |---|---|---|
 | `packages/protocol` 不得 import `server` 或 `web` | 协议包要能独立发版给第三方客户端 | 代码评审 + `pnpm -r check` |
-| 除 `app.ts` 之外不得分发路由 | 路由表只有一处，才能被 `route-doc-sync` 校验 | guard |
+| 路由谓词在 `app.ts` 分组表与 `routes/*` handler 中；`route-doc-sync` 扫描两者 | 路由表只有一处（app.ts），路径字面量不重复登记 | guard |
 | 除 `store-pg.ts` / `schema.ts` / `store/*` 之外不得出现 SQL | 连接池、事务、注入面只有 Store 一个出口 | guard |
 | 除 `logger.ts` 之外不得直接写 stdout | 日志格式与脱敏不能有第二个实现 | guard |
 | `pages.ts` 只允许返回 HTML 字符串，不得访问数据库或网络 | 它是渲染层，混入 IO 就无法在无库环境下测试 | 评审 |
@@ -173,7 +173,7 @@
 
 | 文件 | 预算（行） |
 |---|---|
-| `server/src/app.ts` | 1089（1090→1089：新增轮换路由后压缩注释，零余量） |
+| `server/src/app.ts` | 665（1090→665：分组路由表 + `routes/*` handler 模块，路由谓词仍在 app.ts） |
 | `server/src/store-pg.ts` | 612（799→612：设备密钥 / 会话 / 邮件验证码拆到 `store/*`，Store 保留门面） |
 | `server/src/gateway.ts` | 621（733→621：抽出 `gateway-admission.ts`，D11 已关闭） |
 | `packages/protocol/src/index.ts` | 1473 |
@@ -379,7 +379,7 @@
 
 | # | 债务 | 级别 | 退出条件 |
 |---|---|---|---|
-| D1 | `server/src/app.ts` 1090 行：路由分发、handler、页面装配混在一处 | P2 | 拆出路由表与 handler 模块，降到 700 行以内 |
+| D1 | `server/src/app.ts` 1090 行：路由分发、handler、页面装配混在一处 | 已关闭 | 已拆出分组路由表与 `routes/admin.ts`、`routes/auth-flows.ts`；`app.ts` 1090→665；分组表在 app.ts，exact 路径在 `routes/*`，`route-doc-sync` 同时扫描两者 |
 | D2 | `server/src/store-pg.ts` 770 行：连接、认证、设备、审计、设置混在一个类 | 已关闭 | 已拆出 `store/core.ts`、`store/device-keys.ts`、`store/sessions.ts`、`store/email-codes.ts`；`store-pg.ts` 770→612，Store 仍是唯一事务与数据入口 |
 | D3 | `server/src/gateway.ts` 621 行：连接状态机与链路转发仍在同一类 | P2 | 拆出连接状态机（帧窗口/带宽/队列已随 D11 抽出） |
 | D4 | `packages/protocol/src/index.ts` 1473 行 | P2 | 按帧类型拆文件，导出面不变 |

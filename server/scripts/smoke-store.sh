@@ -12,9 +12,10 @@ fi
 export DSH_WEB_DIR="${DSH_WEB_DIR:-$(cd ../web/dist && pwd)}"
 TSC="${TSC:-npx --yes tsc}"
 rm -rf "$OUT"
-mkdir -p "$OUT/src" "$OUT/src/store" "$OUT/node_modules/@dsh-remote/protocol"
+mkdir -p "$OUT/src" "$OUT/src/store" "$OUT/src/routes" "$OUT/node_modules/@dsh-remote/protocol"
 cp src/*.ts "$OUT/src/"
 cp src/store/*.ts "$OUT/src/store/"
+cp src/routes/*.ts "$OUT/src/routes/"
 cp -r ../packages/protocol/src "$OUT/src/protocol"
 
 $TSC "$OUT/src/protocol/index.ts" --outDir "$OUT/build" \

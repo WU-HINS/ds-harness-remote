@@ -1,5 +1,6 @@
 import { existsSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
+import { walk } from '../lib.mjs'
 
 const BACKTICK = String.fromCharCode(96)
 const INLINE_CODE = new RegExp(BACKTICK + '([^' + BACKTICK + '\\n]+)' + BACKTICK, 'g')
@@ -9,15 +10,27 @@ const REGEX_FAMILY = /\^((?:\\\/[A-Za-z0-9._-]+)+)/g
 
 const normalize = path => (path.replace(/\?.*$/, '').replace(/\/$/, '') || '/')
 
+// A grouped handler must still guard each exact path with `path ===` (or a
+// router regex); a bare prefix check would escape this rule and fork-surface.
+/** Route predicates may live in app.ts or in a routes/* handler module. */
+function routeSources(root) {
+  const files = [join(root, 'server/src/app.ts')]
+  const dir = join(root, 'server/src/routes')
+  if (existsSync(dir)) files.push(...walk(dir, { match: file => file.endsWith('.ts') }))
+  return files
+}
+
 export function codeRoutes(root) {
-  const source = readFileSync(join(root, 'server/src/app.ts'), 'utf8')
   const exact = new Set()
   const families = new Set()
 
-  for (const hit of source.matchAll(EXACT_ROUTE)) exact.add(normalize(hit[1]))
-  for (const hit of source.matchAll(REGEX_FAMILY)) {
-    const family = hit[1].split('\\/').join('/')
-    if (family.startsWith('/api/')) families.add(family)
+  for (const file of routeSources(root)) {
+    const source = readFileSync(file, 'utf8')
+    for (const hit of source.matchAll(EXACT_ROUTE)) exact.add(normalize(hit[1]))
+    for (const hit of source.matchAll(REGEX_FAMILY)) {
+      const family = hit[1].split('\\/').join('/')
+      if (family.startsWith('/api/')) families.add(family)
+    }
   }
   return { exact, families }
 }
@@ -41,7 +54,7 @@ function documentedRoutes(root) {
 
 export const rule = {
   id: 'route-doc-sync',
-  title: 'docs/api.md 必须覆盖 app.ts 里的每一条 /api 路由（含 :id 家族）',
+  title: 'docs/api.md 必须覆盖 app.ts 与 routes/* 里的每一条 /api 路由（含 :id 家族）',
   run(ctx) {
     const { exact, families } = codeRoutes(ctx.root)
     const docs = documentedRoutes(ctx.root)

@@ -593,3 +593,59 @@ DATABASE_URL=… pnpm test:pg   pg-smoke 9 passed；其余套件全绿
 - M2：`app.ts` 1089 → ≤950，关闭 D1；
 - M3：`invariant-coverage` 门禁 + O/M/K 具名用例；
 - M4：发布 1.15.16。
+
+---
+
+# 第十轮（2026-11-11）· M2：拆 app.ts，关闭 D1
+
+## 目标
+
+目标 `goal-44066b0a…` 的第二里程碑：`app.ts` 1090→≤950（实际 ≤700），分组路由表 + handler 模块，
+路由文档同步仍有效，关闭 D1。
+
+## 结构
+
+| 文件 | 行数 | 职责 |
+|---|---|---|
+| `server/src/app.ts` | **665** | 创建/生命周期、中间件、setup/login/页面/设备 API；分组路由表 |
+| `server/src/routes/admin.ts` | 222 | 后台设置、用户、设备、审计、SMTP 测试 |
+| `server/src/routes/auth-flows.ts` | 297 | 自助注册、找回/改密、换绑邮箱、OIDC start/callback/bind/unbind |
+
+分组表只放路径谓词与依赖注入，命中即 return；精确路径仍在各 handler 的 `path ===` / 正则里。
+`route-doc-sync` 的扫描面同步扩展为 `app.ts + routes/*.ts`（33 条精确 / 6 家族，与 HEAD 一致）。
+
+## 等价性
+
+- 评审对搬移区做 token 级对比：auth 3248 token、admin 2520 token **完全一致**（仅去掉 `deps.` 前缀）；
+  唯一的差异是 admin 的 `METHOD_NOT_FOUND` 从 if 块尾移到函数尾。
+- 错误码/状态码/Set-Cookie/redirect 目标/审计动作/分支顺序全部保持；`/auth/login`、`device-login`、
+  `logout`、`me`、`setup`、`refresh`、设备 API 均未被分组前缀捕获。
+- 未匹配的 admin 路径仍是先 `requireAdmin`（401/403）再 `METHOD_NOT_FOUND`（404），与 HEAD 同序。
+
+## 门禁
+
+```
+pnpm verify（57 s）  build ✓ check ✓ guard 11/11 ✓ test ✓
+  protocol 94；server 270；合计 364 条断言，0 failed
+pnpm test:pg（PostgreSQL 15.19）  pg-smoke 9 passed，其余全绿
+Chromium（真库 dsh_browser3）    70/70
+全业务走查（真 SMTP + OIDC）     60/60
+```
+
+## 审核
+
+`reviewer-m2`：**APPROVE**，0 P0 / 0 P1 / 5 P2。token 级等价、dispatch 捕获、route-doc-sync 三向判别、
+预算与导入图均通过。P2 处置：
+
+| P2 | 处置 |
+|---|---|
+| `docs/README.md` 仍写只扫 app.ts | 已改为 app.ts + routes/*.ts |
+| app.ts 遗留 `bindPage` 死导入 | 已删 |
+| 分组前缀对两条路由门禁不可见 | 在 `route-doc-sync` 注明不变量：分组 handler 必须保留精确 `path ===` 守卫 |
+| app.ts 665/665 零余量 | 设计如此，下一次改动先拆 |
+| admin.ts 多缩进一级 | 已整体回退两级 |
+
+## 剩余
+
+- M3：`invariant-coverage` 门禁 + O/M/K 具名用例；
+- M4：发布 1.15.16。

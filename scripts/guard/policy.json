@@ -1,7 +1,7 @@
 {
   "//": "单一真源：所有门禁阈值、预算与豁免都在这里。改这里必须同时改 root.ai.md §门禁。",
   "budgets": {
-    "server/src/app.ts": 1089,
+    "server/src/app.ts": 665,
     "server/src/store-pg.ts": 612,
     "server/src/gateway.ts": 621,
     "packages/protocol/src/index.ts": 1473
@@ -80,7 +80,7 @@
   "budgetNotes": {
     "server/src/gateway.ts": "733→621：抽出 gateway-admission.ts（帧窗口 / 带宽 / 队列），D11 已关闭；预算 621 只降不升",
     "server/src/store-pg.ts": "799→612：设备密钥 / 会话 / 邮件验证码拆到 store/*，Store 保留门面；预算 612 只降不升",
-    "server/src/app.ts": "1090→1089：新增轮换路由后压缩注释；预算 1089 只降不升"
+    "server/src/app.ts": "1090→665：分组路由表 + routes/* handler 模块；预算 665 只降不升"
   },
   "sqlPrefixes": [
     "server/src/store/"

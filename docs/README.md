@@ -9,4 +9,4 @@
 - [Security](security.md) — what the server can and cannot see.
 
 `docs/api.md` is the only authoritative description of the HTTP surface: `scripts/guard` compares it against
-`server/src/app.ts` on every run, so a route that exists but is undocumented fails the gate.
+`server/src/app.ts` and `server/src/routes/*.ts` on every run, so a route that exists but is undocumented fails the gate.
