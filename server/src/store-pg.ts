@@ -5,7 +5,7 @@ import { SecretBox } from './secret-box.js'
 import { DeviceKeyStore, type DeviceKeyRow } from './store/device-keys.js'
 import { EmailCodeStore } from './store/email-codes.js'
 import { SessionStore } from './store/sessions.js'
-import { ApiError, digest, hashPassword, randomToken, type SavedDevice, type UserRow } from './store/core.js'
+import { ApiError, AUDIT_ACTIONS, digest, hashPassword, randomToken, type SavedDevice, type UserRow } from './store/core.js'
 
 export { ApiError, digest, equal, hashPassword, randomToken, verifyPassword, verifyPasswordAsync } from './store/core.js'
 export type { SavedDevice, UserRow } from './store/core.js'
@@ -119,11 +119,8 @@ export class Store {
    */
   async acquireInstanceLease(): Promise<void> {
     if (this.leaseClient) return
-    const client = await this.pool.connect().catch(() => undefined)
-    if (!client) return
+    const client = await this.pool.connect()
     const result = await client.query("SELECT pg_try_advisory_lock(hashtext('dsh_single_writer')) AS ok")
-      .catch(() => undefined)
-    if (!result) { client.release(); return }
     if (result.rows[0]?.ok === false) { client.release(); throw new ApiError('INSTANCE_LOCKED', 503) }
     this.leaseClient = client
   }
@@ -418,15 +415,12 @@ export class Store {
     try {
       await client.query('BEGIN')
       // Portable mutex: the primary key makes exactly one concurrent setup win.
-      try {
-        // The unique row is the tie-breaker: a concurrent bootstrap loses cleanly
-      // instead of racing the users count and surfacing a constraint error.
-      const lock = await client.query('INSERT INTO setup_lock (id) VALUES (1) ON CONFLICT (id) DO NOTHING')
+      // Only a duplicate setup is SETUP_CLOSED; connection failures must surface.
+      const lock = await client.query('INSERT INTO setup_lock (id) VALUES (1) ON CONFLICT (id) DO NOTHING').catch((error: any) => {
+        if (String(error?.code) === '23505') throw new ApiError('SETUP_CLOSED', 409)
+        throw error
+      })
       if ((lock.rowCount ?? 0) === 0) { await client.query('ROLLBACK'); throw new ApiError('SETUP_CLOSED', 409) }
-      } catch {
-        await client.query('ROLLBACK')
-        throw new ApiError('SETUP_CLOSED', 409)
-      }
       const count = await client.query('SELECT count(*)::int AS n FROM users')
       if (count.rows[0].n > 0) { await client.query('ROLLBACK'); throw new ApiError('SETUP_CLOSED', 409) }
       const deviceKey = randomToken()
@@ -605,7 +599,8 @@ export class Store {
   }
 
   async audit(action: string, actor?: string, userId?: string, detail?: unknown): Promise<void> {
+    if (!AUDIT_ACTIONS.has(action)) throw new ApiError('INTERNAL_ERROR', 500, '未登记的审计动作：' + action)
     await this.pool.query('INSERT INTO audit_log (actor, user_id, action, detail) VALUES ($1,$2,$3,$4)',
-      [actor ?? null, userId ?? null, action, detail === undefined ? null : JSON.stringify(detail)]).catch(() => undefined)
+      [actor ?? null, userId ?? null, action, detail === undefined ? null : JSON.stringify(detail)])
   }
 }

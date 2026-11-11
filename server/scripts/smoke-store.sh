@@ -34,6 +34,8 @@ JSON
 $TSC "$OUT/src/app.ts" "$OUT/src/store-pg.ts" --outDir "$OUT/build" \
   --target es2022 --module nodenext --moduleResolution nodenext \
   --skipLibCheck --strict --types node
+mkdir -p "$OUT/lib"
+cp tests/lib/*.mjs "$OUT/lib/"
 cp tests/*.mjs "$OUT/"
 # pg-smoke 仅在设置 DATABASE_URL 时运行
 if [ -n "${DATABASE_URL:-}" ]; then node "$OUT/pg-smoke.mjs"; fi

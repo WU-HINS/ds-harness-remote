@@ -20,7 +20,7 @@ success shape documented below on success. Web sessions use the `dsh_session` co
 |---|---|---|
 | POST | `/api/v1/setup` | first-run bootstrap, authorised by the one-time setup key |
 | POST | `/api/v1/auth/login` | password login, or a device-key ticket exchange |
-| POST | `/api/v1/auth/device-login` | device enrolment with a device key (or the account password when SSO-only is off) |
+| POST | `/api/v1/auth/device-login` | device enrolment with a device key or the account password (a device credential; still allowed under SSO-only) |
 | POST | `/api/v1/auth/logout` | clear the session cookie |
 | GET | `/api/v1/auth/me` | current session user |
 | POST | `/api/v1/auth/register/start` `/api/v1/auth/register/complete` | email registration |

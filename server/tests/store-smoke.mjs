@@ -1,8 +1,8 @@
 
-import { newDb } from 'pg-mem'
+import { newTestDb } from './lib/pg-mem.mjs'
 import { Store, ApiError, digest } from './build/store-pg.js'
 
-const db = newDb({ autoCreateForeignKeyIndices: true })
+const db = newTestDb({ autoCreateForeignKeyIndices: true })
 const { Pool } = db.adapters.createPg()
 const pool = new Pool()
 const store = new Store(pool)

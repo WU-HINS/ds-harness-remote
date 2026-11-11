@@ -1,6 +1,6 @@
 
 import { createServer } from 'node:http'
-import { newDb } from 'pg-mem'
+import { newTestDb } from './lib/pg-mem.mjs'
 import { SignJWT, generateKeyPair, exportJWK } from 'jose'
 import { createApp } from './build/app.js'
 import { loadSettings } from './build/settings.js'
@@ -36,7 +36,7 @@ await new Promise(r => idp.listen(0, '127.0.0.1', r))
 issuer = 'http://127.0.0.1:' + idp.address().port
 
 const sent = []
-const db = newDb({ autoCreateForeignKeyIndices: true })
+const db = newTestDb({ autoCreateForeignKeyIndices: true })
 const pool = db.adapters.createPg().Pool
 const app = createApp(loadSettings({ DSH_SERVER_PUBLIC_URL: 'http://127.0.0.1:1', DSH_SERVER_PORT: '0', DSH_SERVER_HOST: '127.0.0.1', DSH_ANON_RATE_PER_MINUTE: '500' }), {
   pool: new pool(), mailer: { async send(m) { sent.push(m) } },

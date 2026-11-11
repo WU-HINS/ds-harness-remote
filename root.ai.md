@@ -4,7 +4,7 @@
 
 > **位置**：项目根 `/data/dsh/workspace/ds-harness-remote/root.ai.md`。本文件管辖整个工作区，而不只是 `repo/`。
 > **权威**：本文件是唯一可编辑副本。仓库内的 `repo/root.ai.md` 是由本文件生成的镜像（随 git 版本化、供 CI 读取），禁止手改；改完这里运行 `pnpm guard --sync` 重建，漂移会让 `pnpm guard` 变红。
-> **生效**：2026-11-10 · 基线：服务端/前端 1.15.14，协议包 0.5.21 · 上游协议：liguobao/ds-harness-remote
+> **生效**：2026-11-11 · 基线：服务端/前端 1.15.16，协议包 0.5.21 · 上游协议：liguobao/ds-harness-remote
 
 ## 工作区布局（先认清哪里是「项目」）
 
@@ -98,8 +98,8 @@
 | 部署 | 单写者：进程启动即抢 `pg_try_advisory_lock('dsh_single_writer')` | `server/src/store-pg.ts` |
 | 中继带宽预算 | 普通账号合计 **5 MiB/s**，按权重分配；权重随账号自身吞吐衰减（占用越多份额越小） | `server/src/relay-budget.ts` |
 | 数据表 | `setup_lock`、`users`、`sessions`、`devices`、`device_tokens`、`device_keys`、`email_codes`、`server_settings`、`audit_log` | `server/src/schema.ts` |
-| 错误码 | 53 个，集中在 `new ApiError('…')` | `grep -ohE "new ApiError\('[A-Z_]+'" server/src/*.ts` |
-| 审计动作 | 34 个，形如 `device_key.created` | `grep -ohE "audit\('[a-z_.]+'" server/src/*.ts` |
+| 错误码 | 53 个，集中在 `new ApiError('…')` | `grep -rohE "new ApiError\('[A-Z_]+'" server/src --include='*.ts'` |
+| 审计动作 | 34 个，形如 `device_key.created`；`AUDIT_ACTIONS` 为封闭集，未登记动作运行时拒绝 | `grep -rohE "audit\('[a-z_.]+'" server/src --include='*.ts'`；`server/src/store/core.ts` |
 | 存储方法 | `Store` 类 63 个方法（57 公开 / 6 私有），是唯一数据入口；域逻辑在 `server/src/store/*` | `server/src/store-pg.ts`（TS AST 计数） |
 
 **禁止**在没有核对上表的情况下断言"我们有 / 我们没有某个能力"。断言前跑命令，把输出贴进提交说明。
@@ -166,7 +166,7 @@
 | 除 `logger.ts` 之外不得直接写 stdout | 日志格式与脱敏不能有第二个实现 | guard |
 | `pages.ts` 只允许返回 HTML 字符串，不得访问数据库或网络 | 它是渲染层，混入 IO 就无法在无库环境下测试 | 评审 |
 | `runtime.ts` 是运行时配置的唯一入口 | 配置来源 env + `server_settings('runtime_config')`，双源并存必然漂移 | 评审 |
-| `gateway.ts` 不写库、不发邮件 | 连接层出故障时不得拖垮写入路径 | 评审 |
+| `gateway.ts` 不直接写库、不发邮件；唯一写入是去抖的 `touch` | 连接层出故障时不得拖垮写入路径 | 评审 |
 | 新增外部依赖必须说明：用途、体积、许可证、被替代方案 | 供应链即攻击面 | 评审 + P1 |
 | 禁止引入前端框架/构建链 | 当前前端是原生 ESM + esbuild，产物体积与 CSP 都依赖这一点 | 评审 |
 
@@ -174,8 +174,8 @@
 
 | 文件 | 预算（行） |
 |---|---|
-| `server/src/app.ts` | 665（1090→665：分组路由表 + `routes/*` handler 模块，路由谓词仍在 app.ts） |
-| `server/src/store-pg.ts` | 612（799→612：设备密钥 / 会话 / 邮件验证码拆到 `store/*`，Store 保留门面） |
+| `server/src/app.ts` | 665（1089→665；累计 1090→665：分组路由表 + `routes/*` handler 模块） |
+| `server/src/store-pg.ts` | 607（612→607：审计白名单与失败上抛、单写者租约失败上抛；累计 799→607） |
 | `server/src/gateway.ts` | 621（733→621：抽出 `gateway-admission.ts`，D11 已关闭） |
 | `packages/protocol/src/index.ts` | 1473 |
 
@@ -223,7 +223,7 @@
 1. 谁能调用（匿名 / 会话 / 设备令牌 / 管理员）？
 2. 越权时返回什么？为什么不是 403？
 3. 是否限流？桶的 key 是什么（用户 / IP）？
-4. 写操作是否产生审计？动作名是什么（必须能在 §2 的 33 个里找到或新增并登记）？
+4. 写操作是否产生审计？动作名是什么（必须能在 §2 的 34 个里找到或新增并登记）？
 5. 失败路径会不会把异常吞成"成功"或"空列表"？
 
 答不全不允许写代码。
@@ -254,7 +254,7 @@
 | M2 | 角色只有 `admin`/`user`；管理员不可被禁用/删除（`ADMIN_PROTECTED` 409）、不可删自己（`CANNOT_DELETE_SELF`） | `server/tests/http-smoke.mjs` |
 | M3 | 虚拟设备用户名 `dev-xxxxxxxx` 唯一且随机；不得由用户名/邮箱推导 | `server/src/store/device-keys.ts` |
 | M4 | 三层限流：每用户请求/分钟、每用户并发连接上限、每 IP 匿名限流；外加**普通账号共享 5 MiB/s 中继带宽，按权重分配**：`weight = 1/(1+rate/B)`，`share = B·w/Σw`，份额之和恒等于 B。**超出份额先入队**（每设备 FIFO，32 帧 / 256 KiB 上限，最长等待 15s），队列空转即断开；**禁止丢帧**（中继帧带严格 counter，缺口会被对端判为协议违规）。单写者前提不得破坏 | `server/src/ratelimit.ts`、`server/src/gateway.ts`、`server/src/gateway-admission.ts`、`server/src/relay-budget.ts`、`server/src/relay-queue.ts` |
-| M5 | 所有写操作必须落审计，动作名在 §2 的 34 个白名单内，且带 actor 与目标 | `server/src/store-pg.ts` |
+| M5 | 所有写操作必须落审计，动作名在 §2 的 34 个白名单内，且带 actor 与目标；未登记动作由 `AUDIT_ACTIONS` 拒绝，审计写入失败不得吞 | `server/src/store-pg.ts`、`server/src/store/core.ts` |
 
 **C3 · 单用户多密钥（K1–K7）**
 
@@ -380,8 +380,8 @@
 
 | # | 债务 | 级别 | 退出条件 |
 |---|---|---|---|
-| D1 | `server/src/app.ts` 1090 行：路由分发、handler、页面装配混在一处 | 已关闭 | 已拆出分组路由表与 `routes/admin.ts`、`routes/auth-flows.ts`；`app.ts` 1090→665；分组表在 app.ts，exact 路径在 `routes/*`，`route-doc-sync` 同时扫描两者 |
-| D2 | `server/src/store-pg.ts` 770 行：连接、认证、设备、审计、设置混在一个类 | 已关闭 | 已拆出 `store/core.ts`、`store/device-keys.ts`、`store/sessions.ts`、`store/email-codes.ts`；`store-pg.ts` 770→612，Store 仍是唯一事务与数据入口 |
+| D1 | `server/src/app.ts` 1090 行：路由分发、handler、页面装配混在一处 | 已关闭 | 已拆出分组路由表与 `routes/admin.ts`、`routes/auth-flows.ts`；`app.ts` 1089→665（累计 1090→665）；分组表在 app.ts，exact 路径在 `routes/*`，`route-doc-sync` 同时扫描两者 |
+| D2 | `server/src/store-pg.ts` 770 行：连接、认证、设备、审计、设置混在一个类 | 已关闭 | 已拆出 `store/core.ts`、`store/device-keys.ts`、`store/sessions.ts`、`store/email-codes.ts`；`store-pg.ts` 770→612（拆分）、612→607（审计/租约修复），Store 仍是唯一事务与数据入口 |
 | D3 | `server/src/gateway.ts` 621 行：连接状态机与链路转发仍在同一类 | P2 | 拆出连接状态机（帧窗口/带宽/队列已随 D11 抽出） |
 | D4 | `packages/protocol/src/index.ts` 1473 行 | P2 | 按帧类型拆文件，导出面不变 |
 | D5 | `app.ts` 里仍有 1 处 `console.warn`（route_not_found 兜底） | P2 | 接入 `logger.ts` 后删除该豁免 |
@@ -391,12 +391,15 @@
 | D9 | 上游协议基线曾未钉版本号，仅有 `fixtures/protocol/v1` 作证 | 已关闭 | `fixtures/protocol/v1/manifest.json` 已记录上游提交 `14037e78f45e14f7a5ad56c2266944548def7e3d`（协议包 0.5.21），README 记录来源与核对方式 |
 | D10 | 迁移遗留密钥（无密封副本）曾只能标记为不可回显 | 已关闭 | 已暴露 `POST /api/v1/account/device-keys/:id/rotate`（原地换密、保留绑定、审计 `device_key.rotated`），界面提供「轮换」；store / HTTP / 浏览器三层断言 |
 | D11 | `gateway.ts` HEAD 677 → 733（未提交中间态）→ 621 | 已关闭（P1） | 已抽出 `server/src/gateway-admission.ts`（帧窗口、掉线链路墓碑、加权带宽、发送队列），`gateway.ts` 733→621、预算 621；回归 `server/tests/admission-smoke.mjs`（24 条断言）。 |
+| D12 | `gateway.ts` 的 `shouldQueue` 调用点只有单元测试，没有 WebSocket 级回归；改回 take-then-enqueue 仍可能全绿 | P2 | 增加网关级中继顺序用例（真实 WS 或可注入 transport） |
+| D13 | 四个预算文件全部 0 余量（app 665 / store 607 / gateway 621 / protocol 1473），file-budget 在等于预算时不提示 | P2 | 拆分任一文件，或让 file-budget 在 equality 时输出「已到上限」 |
+| D14 | M4 的每用户请求/分钟与并发连接两层没有具名用例；S1–S11 仍无覆盖门禁 | P2 | 补 `[M4]` 用例，并把 invariant-coverage 扩展到 S1–S11 |
 
 ---
 
 ## 16. 待办
 
-1. 把 `app.ts` 的路由分发抽成数据表（路径 → 处理器），让 `route-doc-sync` 可以直接从表生成文档骨架。
+1. ~~把 `app.ts` 的路由分发抽成数据表~~（已完成：分组路由表在 `app.ts`，`route-doc-sync` 扫描 app.ts + routes/*；仅剩「从表生成文档骨架」未做）。
 2. 为 `server/tests` 增加覆盖门禁：任一不变量（S1–S11）没有对应用例时报警。
 3. 用真实设备跑一遍 `server/scripts/browser-check.mjs` 并纳入 CI 的定时任务。
 4. 评估把 `pg-mem` 冒烟与真库冒烟的差异用例单列，减少「本地绿、线上红」。

@@ -1,5 +1,5 @@
 
-import { newDb } from 'pg-mem'
+import { newTestDb } from './lib/pg-mem.mjs'
 import { Store } from './build/store-pg.js'
 import { Runtime } from './build/runtime.js'
 import { loadSettings } from './build/settings.js'
@@ -7,7 +7,7 @@ import { loadSettings } from './build/settings.js'
 let pass = 0, fail = 0
 const check = (n, ok, extra = '') => { ok ? pass++ : fail++; console.log((ok ? 'PASS ' : 'FAIL ') + n + (extra ? ' :: ' + extra : '')) }
 
-const db = newDb({ autoCreateForeignKeyIndices: true })
+const db = newTestDb({ autoCreateForeignKeyIndices: true })
 const { Pool } = db.adapters.createPg()
 const pool = new Pool()
 const store = new Store(pool)

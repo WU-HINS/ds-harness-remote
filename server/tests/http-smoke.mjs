@@ -1,12 +1,12 @@
 
-import { newDb } from 'pg-mem'
+import { newTestDb } from './lib/pg-mem.mjs'
 import { createApp, clientAddress, isPrivateAddress } from './build/app.js'
 import { loadSettings } from './build/settings.js'
 
 let pass = 0, fail = 0
 const check = (n, ok, extra = '') => { ok ? pass++ : fail++; console.log((ok ? 'PASS ' : 'FAIL ') + n + (extra ? ' :: ' + extra : '')) }
 
-const db = newDb({ autoCreateForeignKeyIndices: true })
+const db = newTestDb({ autoCreateForeignKeyIndices: true })
 const { Pool } = db.adapters.createPg()
 const pool = new Pool()
 
@@ -90,10 +90,8 @@ const adminRow = await req('/api/v1/admin/users', { method: 'POST', headers: { '
 const adminId = adminRow.body.user && adminRow.body.user.id
 const disableAdmin = await req('/api/v1/admin/users/' + adminId, { method: 'PATCH', headers: { 'content-type': 'application/json', cookie: adminCookie }, body: JSON.stringify({ toggle: true }) })
 const deleteAdmin = await req('/api/v1/admin/users/' + adminId, { method: 'DELETE', headers: { cookie: adminCookie } })
-const resetAdminPw = await req('/api/v1/admin/users/' + adminId, { method: 'PATCH', headers: { 'content-type': 'application/json', cookie: adminCookie }, body: JSON.stringify({ password: 'hijacked-password' }) })
 check('[M2] admin accounts cannot be disabled', disableAdmin.status === 409 && disableAdmin.body.error.code === 'ADMIN_PROTECTED', String(disableAdmin.status))
 check('admin accounts cannot be deleted', deleteAdmin.status === 409 && deleteAdmin.body.error.code === 'ADMIN_PROTECTED', String(deleteAdmin.status))
-check('admin password reset removed', resetAdminPw.status === 409, String(resetAdminPw.status))
 const me = await req('/api/v1/auth/me', { headers: { cookie: adminCookie } })
 const selfDelete = await req('/api/v1/admin/users/' + me.body.user.id, { method: 'DELETE', headers: { cookie: adminCookie } })
 check('[M2] an admin cannot delete itself', selfDelete.status === 409 && selfDelete.body.error.code === 'CANNOT_DELETE_SELF', String(selfDelete.status))
@@ -115,6 +113,9 @@ const created = await req('/api/v1/admin/users', { method: 'POST', headers: { 'c
 check('admin creates alice', created.status === 201 && created.body.deviceKey === undefined, 'no key handed to the admin')
 const bob = await req('/api/v1/admin/users', { method: 'POST', headers: { 'content-type': 'application/json', cookie: adminCookie }, body: JSON.stringify({ username: 'bob', password: 'bob-password-123', role: 'user' }) })
 check('admin creates bob', bob.status === 201 && bob.body.deviceKey === undefined)
+const resetUserPw = await req('/api/v1/admin/users/' + created.body.user.id, { method: 'PATCH', headers: { 'content-type': 'application/json', cookie: adminCookie }, body: JSON.stringify({ password: 'hijacked-password' }) })
+const aliceLogin = await req('/api/v1/auth/login', { method: 'POST', ...json({ username: 'alice', password: 'alice-password-123' }) })
+check('admin cannot reset a user password', resetUserPw.status === 200 && aliceLogin.status === 200, resetUserPw.status + ' | ' + aliceLogin.status)
 
 // Users enrol with their own password: the console never mints keys for them.
 async function deviceFor(username, password, deviceId) {
@@ -181,6 +182,12 @@ const secureLogin = await fetch('http://127.0.0.1:' + httpsStart.port + '/api/v1
 const secureCookie = secureLogin.headers.get('set-cookie') || ''
 check('https deployment sets Secure cookie', /; Secure/.test(secureCookie) && /HttpOnly/.test(secureCookie) && /SameSite=Lax/.test(secureCookie))
 await httpsApp.close()
+
+const formLogin = await req('/api/v1/auth/login', {
+  method: 'POST', headers: { 'content-type': 'application/x-www-form-urlencoded' },
+  body: 'username=nobody&password=wrong-password-123',
+})
+check('form login failure redirects to the login page', formLogin.status === 302 && (formLogin.headers.get('location') || '').startsWith('/login?error='), formLogin.status + ' | ' + formLogin.headers.get('location'))
 
 let limited = false
 for (let i = 0; i < 80; i++) {

@@ -1,5 +1,5 @@
 
-import { newDb } from 'pg-mem'
+import { newTestDb } from './lib/pg-mem.mjs'
 import { createApp } from './build/app.js'
 import { loadSettings } from './build/settings.js'
 
@@ -8,7 +8,7 @@ const check = (n, ok, extra = '') => { ok ? pass++ : fail++; console.log((ok ? '
 
 const sent = []
 const mailer = { async send(message) { sent.push(message) } }
-const db = newDb({ autoCreateForeignKeyIndices: true })
+const db = newTestDb({ autoCreateForeignKeyIndices: true })
 const { Pool } = db.adapters.createPg()
 const pool = new Pool()
 const app = createApp(loadSettings({ DSH_SERVER_PUBLIC_URL: 'http://127.0.0.1:1', DSH_SERVER_PORT: '0', DSH_SERVER_HOST: '127.0.0.1', DSH_ANON_RATE_PER_MINUTE: '500' }), { pool, mailer })
@@ -74,7 +74,7 @@ check('20 registration restored', (await req('/api/v1/auth/register/start', { me
 await app.close()
 
 // 没有 SMTP 也没有注入 mailer 时，自助注册应关闭
-const db2 = newDb({ autoCreateForeignKeyIndices: true })
+const db2 = newTestDb({ autoCreateForeignKeyIndices: true })
 const pool2 = db2.adapters.createPg().Pool
 const app2 = createApp(loadSettings({ DSH_SERVER_PUBLIC_URL: 'http://127.0.0.1:1', DSH_SERVER_PORT: '0', DSH_SERVER_HOST: '127.0.0.1', DSH_ANON_RATE_PER_MINUTE: '500' }), { pool: new pool2() })
 const started2 = await app2.start()

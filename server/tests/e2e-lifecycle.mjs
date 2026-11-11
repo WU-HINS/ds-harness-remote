@@ -1,12 +1,12 @@
 
-import { newDb } from 'pg-mem'
+import { newTestDb } from './lib/pg-mem.mjs'
 import { createApp } from './build/app.js'
 import { loadSettings } from './build/settings.js'
 
 let pass = 0, fail = 0
 const check = (n, ok, extra = '') => { ok ? pass++ : fail++; console.log((ok ? 'PASS ' : 'FAIL ') + n + (extra ? ' :: ' + extra : '')) }
 
-const db = newDb({ autoCreateForeignKeyIndices: true })
+const db = newTestDb({ autoCreateForeignKeyIndices: true })
 const { Pool } = db.adapters.createPg()
 const pool = new Pool()
 const app = createApp(loadSettings({ DSH_SERVER_PUBLIC_URL: 'http://127.0.0.1:1', DSH_SERVER_PORT: '0', DSH_SERVER_HOST: '127.0.0.1', DSH_ANON_RATE_PER_MINUTE: '500' }), { pool })
@@ -139,6 +139,16 @@ check('29 rotation is audited', Array.isArray(audit.body.items) && audit.body.it
 await req('/api/v1/account/device-keys/' + key3.body.id, { method: 'DELETE', headers: { cookie: aliceCookie2 } })
 const revokedRotate = await req('/api/v1/account/device-keys/' + key3.body.id + '/rotate', { method: 'POST', headers: { cookie: aliceCookie2 } })
 check('29 revoked keys cannot rotate', revokedRotate.status === 404, String(revokedRotate.status))
+
+// HTTP refresh and self-revoke: both must rotate/audit the device trail.
+const refreshed = await req('/api/v1/auth/refresh', {
+  method: 'POST', ...json({ deviceId: 'alice-tablet', refreshToken: regB.body.refreshToken }),
+})
+check('refresh rotates tokens over HTTP', refreshed.status === 200 && refreshed.body.refreshToken !== regB.body.refreshToken, String(refreshed.status))
+const selfRevoke = await req('/api/v1/devices/self', { method: 'DELETE', headers: { authorization: 'Bearer ' + regB.body.accessToken } })
+const selfAudit = await req('/api/v1/admin/audit?limit=50', { headers: { cookie: admin } })
+const selfRow = selfAudit.body.items.find((a) => a.action === 'device.removed' && a.detail?.self === true)
+check('[M5] device self-revoke is audited', selfRevoke.status === 200 && selfRow?.actor === 'alice-tablet' && selfRow?.userId === aliceId, JSON.stringify(selfRow))
 
 await app.close()
 console.log(String.fromCharCode(10) + pass + ' passed, ' + fail + ' failed')

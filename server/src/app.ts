@@ -403,7 +403,6 @@ export function createApp(settings: Settings, deps: { pool?: Pool; mailer?: Mail
       const input = await body(req)
       const username = String(input.username ?? '').trim()
       const deviceKey = String(input.deviceKey ?? '')
-      const onlySso = runtime.current.oidc.onlySso
       const verified = await store.verifyDeviceCredential(username, deviceKey, true)
       let userId: string | undefined = verified?.user.id
       let keyId: string | undefined = verified?.keyId
@@ -564,6 +563,7 @@ export function createApp(settings: Settings, deps: { pool?: Pool; mailer?: Mail
       }
       if (method === 'DELETE' && path === '/api/v1/devices/self') {
         await store.revoke(target.deviceId, device.userId)
+        await store.audit('device.removed', target.deviceId, device.userId, { deviceId: target.deviceId, self: true })
         return json(res, 200, { status: 'revoked' })
       }
       if (method === 'GET' && path === '/api/v1/devices') {

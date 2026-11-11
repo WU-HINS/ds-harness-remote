@@ -38,3 +38,41 @@ export interface UserRow {
   oidc_issuer: string | null; oidc_subject: string | null
 }
 export interface SavedDevice { descriptor: any; userId: string; revoked: boolean; lastSeenAt: number; deviceKeyId?: string }
+
+/** Closed audit-action set; root.ai.md §2 lists the same 34 names. */
+export const AUDIT_ACTIONS: ReadonlySet<string> = new Set([
+  'account.registered',
+  'auth.code_failure',
+  'device.registered',
+  'device.registered_from_account',
+  'device.removed',
+  'device.renamed',
+  'device.revoked_by_admin',
+  'device_key.created',
+  'device_key.revoked',
+  'device_key.rotated',
+  'device_key.ticket_issued',
+  'device_login.failure',
+  'device_login.success',
+  'email.change_started',
+  'email.changed',
+  'login.disabled',
+  'login.failure',
+  'login.sso_only_rejected',
+  'login.success',
+  'oidc.auto_bound',
+  'oidc.bound',
+  'oidc.conflict',
+  'oidc.failure',
+  'oidc.provisioned',
+  'oidc.rejected',
+  'oidc.success',
+  'oidc.unbound',
+  'password.changed',
+  'password.reset',
+  'settings.updated',
+  'setup.admin_created',
+  'user.created',
+  'user.deleted',
+  'user.updated',
+])
