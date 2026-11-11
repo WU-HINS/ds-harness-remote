@@ -100,7 +100,7 @@
 | 数据表 | `setup_lock`、`users`、`sessions`、`devices`、`device_tokens`、`device_keys`、`email_codes`、`server_settings`、`audit_log` | `server/src/schema.ts` |
 | 错误码 | 53 个，集中在 `new ApiError('…')` | `grep -ohE "new ApiError\('[A-Z_]+'" server/src/*.ts` |
 | 审计动作 | 34 个，形如 `device_key.created` | `grep -ohE "audit\('[a-z_.]+'" server/src/*.ts` |
-| 存储方法 | `Store` 类 64 个方法（57 公开 / 7 私有），是唯一数据入口 | `server/src/store-pg.ts`（TS AST 计数） |
+| 存储方法 | `Store` 类 63 个方法（57 公开 / 6 私有），是唯一数据入口；域逻辑在 `server/src/store/*` | `server/src/store-pg.ts`（TS AST 计数） |
 
 **禁止**在没有核对上表的情况下断言"我们有 / 我们没有某个能力"。断言前跑命令，把输出贴进提交说明。
 
@@ -133,7 +133,7 @@
 | 规则 | 断言 |
 |---|---|
 | `file-budget` | 文件行数不超预算；超过 600 行必须登记预算（只降不升） |
-| `sql-containment` | SQL 只出现在 `schema.ts` 与 `store-pg.ts`（唯一豁免：就绪探针 `SELECT 1`） |
+| `sql-containment` | SQL 只出现在 `schema.ts`、`store-pg.ts` 与 `store/*` 领域模块（唯一豁免：就绪探针 `SELECT 1`） |
 | `console-containment` | `console.*` 只允许出现在 `logger.ts`、`main.ts`、`config.ts` |
 | `schema-idempotence` | 声明式 schema 每条语句重跑都无副作用；禁止 `DROP` |
 | `route-doc-sync` | `app.ts` 里每条 `/api/v1` 路由与 `:id` 家族都必须在 `docs/api.md` 出现；文档也不许写代码里没有的路由 |
@@ -161,7 +161,7 @@
 |---|---|---|
 | `packages/protocol` 不得 import `server` 或 `web` | 协议包要能独立发版给第三方客户端 | 代码评审 + `pnpm -r check` |
 | 除 `app.ts` 之外不得分发路由 | 路由表只有一处，才能被 `route-doc-sync` 校验 | guard |
-| 除 `store-pg.ts` / `schema.ts` 之外不得出现 SQL | 连接池、事务、注入面只有一个出口 | guard |
+| 除 `store-pg.ts` / `schema.ts` / `store/*` 之外不得出现 SQL | 连接池、事务、注入面只有 Store 一个出口 | guard |
 | 除 `logger.ts` 之外不得直接写 stdout | 日志格式与脱敏不能有第二个实现 | guard |
 | `pages.ts` 只允许返回 HTML 字符串，不得访问数据库或网络 | 它是渲染层，混入 IO 就无法在无库环境下测试 | 评审 |
 | `runtime.ts` 是运行时配置的唯一入口 | 配置来源 env + `server_settings('runtime_config')`，双源并存必然漂移 | 评审 |
@@ -174,7 +174,7 @@
 | 文件 | 预算（行） |
 |---|---|
 | `server/src/app.ts` | 1089（1090→1089：新增轮换路由后压缩注释，零余量） |
-| `server/src/store-pg.ts` | 770（799→770：抽出 `secret-box.ts`、按 key 轮换、删除死列回写） |
+| `server/src/store-pg.ts` | 612（799→612：设备密钥 / 会话 / 邮件验证码拆到 `store/*`，Store 保留门面） |
 | `server/src/gateway.ts` | 621（733→621：抽出 `gateway-admission.ts`，D11 已关闭） |
 | `packages/protocol/src/index.ts` | 1473 |
 
@@ -206,8 +206,8 @@
 | # | 不变量 | 现状依据 |
 |---|---|---|
 | S1 | 服务端永远看不到明文业务流量；中继帧不落库、不进日志 | `docs/security.md` |
-| S2 | 口令用 `scrypt` + 每用户盐；会话/设备令牌只存摘要（设备密钥按 S3：摘要 + 加密副本） | `server/src/store-pg.ts` |
-| S3 | 凭据存储分层：**会话/设备令牌 = 仅摘要**；**验证码 = HMAC 摘要**；**设备密钥 = 摘要（查找）+ AES-256-GCM 加密副本（所有者可再次查看）**。因此「拿到数据库 + 进程密钥即可还原设备密钥」是**已知取舍**，必须写进威胁模型，不得宣称「只存摘要」 | `server/src/store-pg.ts`、`docs/auth.md` |
+| S2 | 口令用 `scrypt` + 每用户盐；会话/设备令牌只存摘要（设备密钥按 S3：摘要 + 加密副本） | `server/src/store/core.ts` |
+| S3 | 凭据存储分层：**会话/设备令牌 = 仅摘要**；**验证码 = HMAC 摘要**；**设备密钥 = 摘要（查找）+ AES-256-GCM 加密副本（所有者可再次查看）**。因此「拿到数据库 + 进程密钥即可还原设备密钥」是**已知取舍**，必须写进威胁模型，不得宣称「只存摘要」 | `server/src/store/core.ts`、`server/src/store/device-keys.ts`、`server/src/secret-box.ts`、`docs/auth.md` |
 | S4 | 跨租户一律 **404**，不返回 403，避免存在性泄漏 | `docs/api.md` §Device |
 | S5 | 会话 Cookie：`HttpOnly; SameSite=Lax; Secure（https 时）` | `server/src/app.ts` 的 `cookie()` |
 | S6 | 状态变更请求校验 `Origin` / `Sec-Fetch-Site`；OIDC 回调是唯一豁免，靠 state cookie | `docs/security.md` |
@@ -251,7 +251,7 @@
 |---|---|---|
 | M1 | 跨租户一律 404；设备、presence、中继、密钥、审计都按 `user_id` 过滤 | `server/src/app.ts` |
 | M2 | 角色只有 `admin`/`user`；管理员不可被禁用/删除（`ADMIN_PROTECTED` 409）、不可删自己（`CANNOT_DELETE_SELF`） | `server/tests/http-smoke.mjs` |
-| M3 | 虚拟设备用户名 `dev-xxxxxxxx` 唯一且随机；不得由用户名/邮箱推导 | `server/src/store-pg.ts` |
+| M3 | 虚拟设备用户名 `dev-xxxxxxxx` 唯一且随机；不得由用户名/邮箱推导 | `server/src/store/device-keys.ts` |
 | M4 | 三层限流：每用户请求/分钟、每用户并发连接上限、每 IP 匿名限流；外加**普通账号共享 5 MiB/s 中继带宽，按权重分配**：`weight = 1/(1+rate/B)`，`share = B·w/Σw`，份额之和恒等于 B。**超出份额先入队**（每设备 FIFO，32 帧 / 256 KiB 上限，最长等待 15s），队列空转即断开；**禁止丢帧**（中继帧带严格 counter，缺口会被对端判为协议违规）。单写者前提不得破坏 | `server/src/ratelimit.ts`、`server/src/gateway.ts`、`server/src/gateway-admission.ts`、`server/src/relay-budget.ts`、`server/src/relay-queue.ts` |
 | M5 | 所有写操作必须落审计，动作名在 §2 的 34 个白名单内，且带 actor 与目标 | `server/src/store-pg.ts` |
 
@@ -259,13 +259,13 @@
 
 | # | 不变量 | 现状依据 |
 |---|---|---|
-| K1 | 一个用户 N 把密钥，每把可绑定 N 台设备（`devices.device_key_id`）；换绑不删除密钥 | `server/src/store-pg.ts` |
-| K2 | 库内 = 摘要（登录查找）+ AES-256-GCM 加密副本；**所有者必须能回显**：同一明文逐字节一致，接口返回 `key` 且 `revealable: true`。加密密钥由 `server_settings.code_secret` 经 HKDF 派生，**数据库备份等同凭据** | `server/src/store-pg.ts`、`server/src/secret-box.ts`、`docs/api.md` |
-| K3 | 已吊销密钥：不可查看明文、不可登录；吊销同时吊销其名下设备并删除 `device_tokens`（立即断连） | `server/src/store-pg.ts` |
+| K1 | 一个用户 N 把密钥，每把可绑定 N 台设备（`devices.device_key_id`）；换绑不删除密钥 | `server/src/store/device-keys.ts` |
+| K2 | 库内 = 摘要（登录查找）+ AES-256-GCM 加密副本；**所有者必须能回显**：同一明文逐字节一致，接口返回 `key` 且 `revealable: true`。加密密钥由 `server_settings.code_secret` 经 HKDF 派生，**数据库备份等同凭据** | `server/src/store/device-keys.ts`、`server/src/secret-box.ts`、`docs/api.md` |
+| K3 | 已吊销密钥：不可查看明文、不可登录；吊销同时吊销其名下设备并删除 `device_tokens`（立即断连） | `server/src/store/device-keys.ts` |
 | K4 | 管理员**永远**不可读取、铸造或吊销他人的密钥；该接口已移除，且有用例断言返回 404 | `server/tests/e2e-lifecycle.mjs` |
-| K5 | 未绑定密钥的历史设备必须显示为「(未绑定密钥)」，不得隐藏，也不得计入某把密钥 | `server/src/store-pg.ts` |
+| K5 | 未绑定密钥的历史设备必须显示为「(未绑定密钥)」，不得隐藏，也不得计入某把密钥 | `server/src/store/device-keys.ts` |
 | K6 | 改密码/改邮箱不得静默改变密钥集合；密钥增删必须有 `device_key.created` / `device_key.revoked` 审计 | `server/src/app.ts` |
-| K7 | **回显契约**：未吊销密钥必须 `revealable: true` 且带 `key`；已吊销或历史无密封副本的密钥必须 `revealable: false` 且不带 `key`，界面显式说明并给出「轮换」入口（D10），**不得静默留空**。任何新增密钥的代码路径不得造出无法回显的活密钥（唯一例外：迁移遗留，必须标记） | `server/src/store-pg.ts`、`web/src/pages/keys.js` |
+| K7 | **回显契约**：未吊销密钥必须 `revealable: true` 且带 `key`；已吊销或历史无密封副本的密钥必须 `revealable: false` 且不带 `key`，界面显式说明并给出「轮换」入口（D10），**不得静默留空**。任何新增密钥的代码路径不得造出无法回显的活密钥（唯一例外：迁移遗留，必须标记） | `server/src/store/device-keys.ts`、`web/src/pages/keys.js` |
 
 ## 7. API 契约
 
@@ -380,7 +380,7 @@
 | # | 债务 | 级别 | 退出条件 |
 |---|---|---|---|
 | D1 | `server/src/app.ts` 1090 行：路由分发、handler、页面装配混在一处 | P2 | 拆出路由表与 handler 模块，降到 700 行以内 |
-| D2 | `server/src/store-pg.ts` 770 行：连接、认证、设备、审计、设置仍在一个类 | P2 | 按领域拆模块，保持单一事务边界（密钥密封已抽出 `secret-box.ts`） |
+| D2 | `server/src/store-pg.ts` 770 行：连接、认证、设备、审计、设置混在一个类 | 已关闭 | 已拆出 `store/core.ts`、`store/device-keys.ts`、`store/sessions.ts`、`store/email-codes.ts`；`store-pg.ts` 770→612，Store 仍是唯一事务与数据入口 |
 | D3 | `server/src/gateway.ts` 621 行：连接状态机与链路转发仍在同一类 | P2 | 拆出连接状态机（帧窗口/带宽/队列已随 D11 抽出） |
 | D4 | `packages/protocol/src/index.ts` 1473 行 | P2 | 按帧类型拆文件，导出面不变 |
 | D5 | `app.ts` 里仍有 1 处 `console.warn`（route_not_found 兜底） | P2 | 接入 `logger.ts` 后删除该豁免 |

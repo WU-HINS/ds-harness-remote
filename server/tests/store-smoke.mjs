@@ -112,7 +112,8 @@ check('sixth code in an hour is refused', quotaHit)
 // expired rows are swept on the next issue
 await pool.query('INSERT INTO email_codes (id, email, purpose, code_hash, expires_at, created_at) VALUES ($1,$2,$3,$4, now() - interval \'3 days\', now() - interval \'3 days\')',
   ['stale-1', 'sweep@example.com', 'register', 'x'])
-store['lastSweep'] = 0
+// The sweep throttle lives in the e-mail domain now; the seam is intentional.
+store['emailCodes'].resetSweep()
 await store.issueEmailCode('sweep@example.com', 'register')
 const left = await pool.query("SELECT count(*)::int AS n FROM email_codes WHERE id = 'stale-1'")
 check('expired codes are swept', left.rows[0].n === 0, String(left.rows[0].n))

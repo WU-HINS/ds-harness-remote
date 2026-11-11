@@ -522,3 +522,74 @@ Chromium（browser-check，真库 dsh_browser2）     70/70
 - GitHub Release：https://github.com/WU-HINS/ds-harness-remote/releases/tag/v1.15.15
 - 镜像 tag：`ghcr.io/wu-hins/ds-harness-remote/server` → `1.15.15`、`1.15`、`latest`
 - tag 指向提交：`74fac73 feat(account): rotate a device key in place, close D10`
+
+---
+
+# 第九轮（2026-11-11）· M1：拆 store-pg，关闭 D2
+
+## 目标
+
+目标 `goal-44066b0a…` 的第一里程碑：把 `store-pg.ts` 从 770 行降到 ≤650，SQL containment 扩展为
+`server/src/store/*`，Store 仍是唯一数据入口与唯一事务边界，行为不变。
+
+## 结构
+
+| 文件 | 行数 | 职责 |
+|---|---|---|
+| `server/src/store/core.ts` | 40 | `ApiError`、`digest`/`randomToken`/`equal`、scrypt 口令、`UserRow`/`SavedDevice` |
+| `server/src/store/device-keys.ts` | 140 | 设备密钥：backfill、唯一设备名、创建/列表/吊销/校验/轮换 |
+| `server/src/store/sessions.ts` | 31 | Web 会话：创建/解析/清理/删除 |
+| `server/src/store/email-codes.ts` | 70 | 邮件验证码：配额、尝试计数、过期清理 |
+| `server/src/store-pg.ts` | **612** | 连接/认证/设备缓存/用户/OIDC/设置/审计，事务仍只在这里 |
+
+契约同步：§3.2 与 §4.2 的 SQL 允许面改为 `schema.ts` / `store-pg.ts` / `store/*`；§4.3 store 预算
+799→612；§2 Store 方法 63（57 公开 / 6 私有）；K/S 各行证据路径改到实际模块；D2 → **已关闭**。
+
+## 等价性
+
+- 17 个方法体逐一对比 HEAD：搬移后除 `cache.revokeCached` 钩子、`cleanupEmailCodes→cleanup`、
+  `const x; return x?.user` → `return (await …)?.user` 外无逻辑差异；错误码、配额、尝试计数、
+  60s sweep、1 天保留、缓存失效顺序全部保持。
+- `BEGIN/COMMIT/ROLLBACK` 仍只在 `store-pg.ts`（issue / createUser / createFirstAdmin）；
+  `store/*` 零 `pool.connect()`、零事务。
+- `ApiError` 单一定义在 `store/core.ts`，由 `store-pg.ts` 重导出，`instanceof` 不受影响。
+
+## SQL containment 判别
+
+`policy.json` 改成 `sqlPrefixes: ["server/src/store/"]`，规则用 `startsWith` 且带尾斜杠：
+
+```
+server/src/store/__probe.ts  含 SELECT → ok（0 违规）
+server/src/__probe.ts        含 SELECT → ✗ SQL 出现在允许清单之外
+```
+
+证明豁免的是目录而不是「任何叫 store 的前缀」；探针已删除，树干净。
+
+## 门禁
+
+```
+pnpm verify（59 s）  build ✓ check ✓ guard 11/11 ✓ test ✓
+  protocol 94；server 270（store 35 / lifecycle 41 / admission 24 …）
+  合计 364 条断言，0 failed
+DATABASE_URL=… pnpm test:pg   pg-smoke 9 passed；其余套件全绿
+```
+
+## 审核
+
+`reviewer-store2`：**APPROVE**，0 P0 / 0 P1 / 6 P2。逐方法 AST 对比、事务边界、SQL 前缀判别、
+预算/方法计数、导入无环均通过。P2 处置：
+
+| P2 | 处置 |
+|---|---|
+| K7/S2/S3 证据路径仍指 store-pg | 已改为 `store/device-keys.ts` / `store/core.ts` |
+| store-pg 导入 `equal`/`verifyPassword*` 但未使用 | 已删本地导入，保留重导出 |
+| 删 `lastSweep` 留下双空行 | 已归一 |
+| 测试直接改两级私有字段 | 新增 `EmailCodeStore.resetSweep()` 测试缝，测试改调它 |
+| 预算 612/612 零余量 | 设计如此，下一次改动先拆 |
+| `server/src/store/` 未跟踪 | 提交时 `git add -A` 纳入 |
+
+## 剩余
+
+- M2：`app.ts` 1089 → ≤950，关闭 D1；
+- M3：`invariant-coverage` 门禁 + O/M/K 具名用例；
+- M4：发布 1.15.16。

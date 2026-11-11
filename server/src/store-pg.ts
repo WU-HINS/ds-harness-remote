@@ -1,54 +1,18 @@
 import { Pool } from 'pg'
+import { createHmac, randomBytes, randomUUID, timingSafeEqual } from 'node:crypto'
 import { SCHEMA_NORMALISE, SCHEMA_STATEMENTS } from './schema.js'
-import { createHash, createHmac, randomBytes, randomInt, randomUUID, scrypt, scryptSync, timingSafeEqual } from 'node:crypto'
 import { SecretBox } from './secret-box.js'
+import { DeviceKeyStore, type DeviceKeyRow } from './store/device-keys.js'
+import { EmailCodeStore } from './store/email-codes.js'
+import { SessionStore } from './store/sessions.js'
+import { ApiError, digest, hashPassword, randomToken, type SavedDevice, type UserRow } from './store/core.js'
 
-export class ApiError extends Error {
-  constructor(readonly code: string, readonly status = 400, readonly detail?: string) { super(detail ?? code) }
-}
+export { ApiError, digest, equal, hashPassword, randomToken, verifyPassword, verifyPasswordAsync } from './store/core.js'
+export type { SavedDevice, UserRow } from './store/core.js'
 
-export const digest = (value: string): string => createHash('sha256').update(value).digest('hex')
-export const randomToken = (): string => randomBytes(32).toString('base64url')
-export const equal = (left: string, right: string): boolean =>
-  timingSafeEqual(Buffer.from(digest(left)), Buffer.from(digest(right)))
-
-export function hashPassword(password: string): string {
-  const salt = randomBytes(16)
-  return 'scrypt$' + salt.toString('base64url') + '$' + scryptSync(password, salt, 32).toString('base64url')
-}
-const scryptAsync = (password: string, salt: Buffer): Promise<Buffer> =>
-  new Promise((resolve, reject) => scrypt(password, salt, 32, (error, key) => error ? reject(error) : resolve(key as Buffer)))
-export async function verifyPasswordAsync(password: string, stored: string | null): Promise<boolean> {
-  if (!stored) return false
-  const [scheme, salt, key] = stored.split('$')
-  if (scheme !== 'scrypt' || !salt || !key) return false
-  const actual = await scryptAsync(password, Buffer.from(salt, 'base64url'))
-  const expected = Buffer.from(key, 'base64url')
-  return actual.length === expected.length && timingSafeEqual(actual, expected)
-}
-export function verifyPassword(password: string, stored: string | null): boolean {
-  if (!stored) return false
-  const [scheme, salt, key] = stored.split('$')
-  if (scheme !== 'scrypt' || !salt || !key) return false
-  const actual = scryptSync(password, Buffer.from(salt, 'base64url'), 32)
-  const expected = Buffer.from(key, 'base64url')
-  return actual.length === expected.length && timingSafeEqual(actual, expected)
-}
-
-export interface UserRow {
-  id: string; username: string; email: string | null; role: 'admin' | 'user'
-  disabled: boolean; device_key_hash: string; device_username: string; password_hash: string | null; email_verified: boolean; created_at: string
-  oidc_issuer: string | null; oidc_subject: string | null
-}
-export interface SavedDevice { descriptor: any; userId: string; revoked: boolean; lastSeenAt: number; deviceKeyId?: string }
 interface TokenRecord {
   kind: 'access' | 'refresh'; deviceId: string; userId: string; expires: number
   used: boolean; recovery?: { nonce: string; accessExpires: number; expires: number }
-}
-
-/** Short, unique, human-typeable device login name. */
-function newDeviceUsername(): string {
-  return 'dev-' + randomBytes(6).toString('base64url').toLowerCase().replace(/[^a-z0-9]/g, '').slice(0, 10)
 }
 
 function successor(token: string, nonce: string, deviceId: string) {
@@ -76,12 +40,20 @@ export class Store {
   onInvalidate: (id: string) => void = () => {}
 
   private readonly secrets: SecretBox
+  private readonly sessions: SessionStore
+  private readonly emailCodes: EmailCodeStore
+  private readonly deviceKeys: DeviceKeyStore
 
   constructor(readonly pool: Pool) {
     this.secrets = new SecretBox(
       async () => (await this.getSetting<{ key: string }>('code_secret'))?.key,
       async key => this.setSetting('code_secret', { key }),
     )
+    this.sessions = new SessionStore(pool)
+    this.emailCodes = new EmailCodeStore(pool, this.secrets)
+    this.deviceKeys = new DeviceKeyStore(pool, this.secrets, {
+      revokeCached: id => this.markDeviceRevoked(id),
+    })
   }
 
   /**
@@ -93,7 +65,7 @@ export class Store {
     try {
       for (const statement of SCHEMA_STATEMENTS) await this.applySchemaStatement(statement)
       for (const statement of SCHEMA_NORMALISE) await this.pool.query(statement).catch(() => undefined)
-      await this.backfillDeviceKeys()
+      await this.deviceKeys.backfill()
       await this.pool.query(
         'INSERT INTO server_settings (key, value) VALUES ($1,$2) ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value, updated_at = now()',
         ['schema', JSON.stringify({ statements: SCHEMA_STATEMENTS.length, appliedAt: Date.now() })]).catch(() => undefined)
@@ -135,23 +107,6 @@ export class Store {
       if (/already exists|duplicate/i.test(message)) return
       throw error
     })
-  }
-
-  /** Idempotent: gives every pre-existing user a device username and one device key. */
-  private async backfillDeviceKeys(): Promise<void> {
-    const missingNames = await this.pool.query("SELECT id FROM users WHERE device_username IS NULL OR device_username = ''")
-    for (const row of missingNames.rows) {
-      await this.pool.query('UPDATE users SET device_username = $2 WHERE id = $1', [row.id, newDeviceUsername()])
-        .catch(() => undefined)
-    }
-    const legacy = await this.pool.query(
-      "SELECT id, device_key_hash FROM users WHERE device_key_hash IS NOT NULL AND device_key_hash <> ''")
-    for (const row of legacy.rows) {
-      const existing = await this.pool.query('SELECT 1 FROM device_keys WHERE user_id = $1', [row.id])
-      if ((existing.rowCount ?? 0) > 0) continue
-      await this.pool.query('INSERT INTO device_keys (id, user_id, label, key_hash) VALUES ($1,$2,$3,$4)',
-        [randomUUID(), row.id, 'default', row.device_key_hash]).catch(() => undefined)
-    }
   }
 
   /** Refuse to run as a second writer; the in-memory cache assumes one process. */
@@ -266,64 +221,16 @@ export class Store {
     return this.devices.get(deviceId)?.userId === userId
   }
 
-  // ── device lifecycle ──────────────────────────────────────────────────────
-  private async uniqueDeviceUsername(): Promise<string> {
-    for (let attempt = 0; attempt < 5; attempt += 1) {
-      const candidate = newDeviceUsername()
-      const taken = await this.pool.query('SELECT 1 FROM users WHERE device_username = $1', [candidate])
-      if ((taken.rowCount ?? 0) === 0) return candidate
-    }
-    throw new ApiError('INTERNAL_ERROR', 500)
-  }
-
   async createDeviceKey(userId: string, label: string): Promise<{ id: string; label: string; key: string }> {
-    const id = randomUUID()
-    const key = randomToken()
-    await this.pool.query('INSERT INTO device_keys (id, user_id, label, key_hash, secret) VALUES ($1,$2,$3,$4,$5)',
-      [id, userId, label.slice(0, 64) || 'device', digest(key), await this.secrets.seal(key)])
-    return { id, label, key }
+    return this.deviceKeys.create(userId, label)
   }
 
-  async listDeviceKeys(userId: string): Promise<Array<{ id: string; label: string; revoked: boolean; createdAt: string; lastUsedAt: string | null; deviceCount: number; revealable: boolean; key?: string }>> {
-    const keys = await this.pool.query('SELECT id, label, revoked, created_at, last_used_at, secret FROM device_keys WHERE user_id = $1 ORDER BY created_at, id', [userId])
-    const counts = await this.pool.query("SELECT device_key_id, count(*)::int AS n FROM devices WHERE user_id = $1 AND revoked = false AND device_key_id IS NOT NULL GROUP BY device_key_id", [userId])
-    const byKey = new Map<string, number>()
-    for (const row of counts.rows) byKey.set(row.device_key_id, row.n)
-    // A live key is reversible by contract: the owner may echo it again. Revoked
-    // keys and legacy rows without a sealed copy are flagged, never silently blank.
-    const listed = await Promise.all(keys.rows.map(async (row: any) => {
-      const key = row.revoked ? undefined : await this.secrets.open(row.secret)
-      return {
-        id: row.id, label: row.label, revoked: row.revoked,
-        createdAt: row.created_at, lastUsedAt: row.last_used_at,
-        deviceCount: byKey.get(row.id) ?? 0,
-        revealable: key !== undefined, ...(key !== undefined ? { key } : {}),
-      }
-    }))
-    // Devices enrolled before device keys existed have no binding. Surface them
-    // instead of letting the panel under-report live devices.
-    const unbound = await this.pool.query(
-      'SELECT count(*)::int AS n FROM devices WHERE user_id = $1 AND revoked = false AND device_key_id IS NULL', [userId])
-    const unboundCount = unbound.rows[0]?.n ?? 0
-    if (unboundCount > 0) listed.push({ id: 'unbound', label: '(未绑定密钥)', revoked: false, createdAt: '', lastUsedAt: null, deviceCount: unboundCount, revealable: false })
-    return listed
+  async listDeviceKeys(userId: string): Promise<DeviceKeyRow[]> {
+    return this.deviceKeys.list(userId)
   }
 
   async revokeDeviceKey(keyId: string, userId?: string): Promise<number> {
-    if (keyId === 'unbound') throw new ApiError('INVALID_MESSAGE', 400)
-    const key = await this.pool.query('SELECT * FROM device_keys WHERE id = $1', [keyId])
-    const row = key.rows[0]
-    if (!row || (userId !== undefined && row.user_id !== userId)) throw new ApiError('DEVICE_KEY_NOT_FOUND', 404)
-    await this.pool.query('UPDATE device_keys SET revoked = true WHERE id = $1', [keyId])
-    const bound = await this.pool.query('SELECT id FROM devices WHERE device_key_id = $1 AND revoked = false', [keyId])
-    for (const device of bound.rows) {
-      await this.pool.query('UPDATE devices SET revoked = true WHERE id = $1', [device.id])
-      await this.pool.query('DELETE FROM device_tokens WHERE device_id = $1', [device.id])
-      const cached = this.devices.get(device.id)
-      if (cached) cached.revoked = true
-      this.invalidate(device.id)
-    }
-    return bound.rowCount ?? 0
+    return this.deviceKeys.revoke(keyId, userId)
   }
 
   /** Rename a device the caller owns; devices are addressed by their own id. */
@@ -346,19 +253,8 @@ export class Store {
     this.invalidate(deviceId)
   }
 
-  async verifyDeviceCredential(login: string, secret: string, allowStandardUsername: boolean): Promise<{ user: UserRow; keyId: string } | undefined> {
-    const found = await this.pool.query(
-      'SELECT * FROM users WHERE device_username = $1' + (allowStandardUsername ? ' OR lower(username) = lower($1)' : '') +
-      ' ORDER BY (device_username = $1) DESC LIMIT 1',
-      [login])
-    const user: UserRow | undefined = found.rows[0]
-    if (!user || user.disabled) return undefined
-    const key = await this.pool.query('SELECT id FROM device_keys WHERE user_id = $1 AND key_hash = $2 AND revoked = false',
-      [user.id, digest(secret)])
-    const keyRow = key.rows[0]
-    if (!keyRow) return undefined
-    await this.pool.query('UPDATE device_keys SET last_used_at = now() WHERE id = $1', [keyRow.id]).catch(() => undefined)
-    return { user, keyId: keyRow.id }
+  async verifyDeviceCredential(login: string, secret: string, allowStandardUsername: boolean) {
+    return this.deviceKeys.verifyCredential(login, secret, allowStandardUsername)
   }
 
   async register(userId: string, descriptor: any, deviceKeyId?: string): Promise<{ accessToken: string; refreshToken: string; accessTokenExpiresAt: number; refreshTokenExpiresAt: number }> {
@@ -498,7 +394,7 @@ export class Store {
   }
   async createUser(input: { username: string; password?: string; role?: 'admin' | 'user'; email?: string; emailVerified?: boolean }): Promise<{ user: UserRow; deviceKey: string }> {
     const deviceKey = randomToken()
-    const deviceUsername = await this.uniqueDeviceUsername()
+    const deviceUsername = await this.deviceKeys.uniqueUsername()
     const sealed = await this.secrets.seal(deviceKey)
     const client = await this.pool.connect()
     try {
@@ -570,28 +466,22 @@ export class Store {
 
   private async revokeCached(deviceId: string): Promise<void> {
     await this.pool.query('UPDATE devices SET revoked = true WHERE id = $1', [deviceId])
+    this.markDeviceRevoked(deviceId)
+  }
+
+  /** Cache half of revocation; also used by the device-key domain. */
+  private markDeviceRevoked(deviceId: string): void {
     const cached = this.devices.get(deviceId)
     if (cached) cached.revoked = true
     this.invalidate(deviceId)
   }
-  /**
-   * Re-key one owned key in place: same id and device bindings, new secret.
-   * Existing device tokens survive (they are not derived from the key); only
-   * future enrolments need the new plaintext. A revoked or foreign key is 404.
-   */
-  async rotateDeviceKeyById(userId: string, keyId: string): Promise<{ id: string; label: string; key: string }> {
-    const key = randomToken()
-    const sealed = await this.secrets.seal(key)
-    const updated = await this.pool.query(
-      'UPDATE device_keys SET key_hash = $3, secret = $4, last_used_at = NULL WHERE id = $1 AND user_id = $2 AND revoked = false RETURNING id, label',
-      [keyId, userId, digest(key), sealed])
-    const row = updated.rows[0]
-    if (!row) throw new ApiError('DEVICE_KEY_NOT_FOUND', 404)
-    return { id: row.id, label: row.label, key }
+
+  async rotateDeviceKeyById(userId: string, keyId: string) {
+    return this.deviceKeys.rotate(userId, keyId)
   }
-  async verifyDeviceKey(username: string, deviceKey: string): Promise<UserRow | undefined> {
-    const verified = await this.verifyDeviceCredential(username, deviceKey, true)
-    return verified?.user
+
+  async verifyDeviceKey(username: string, deviceKey: string) {
+    return this.deviceKeys.verifyKey(username, deviceKey)
   }
   async setDisabled(userId: string, disabled: boolean): Promise<void> {
     await this.pool.query('UPDATE users SET disabled = $2 WHERE id = $1', [userId, disabled])
@@ -628,26 +518,20 @@ export class Store {
     return (await this.pool.query('SELECT * FROM users WHERE oidc_issuer = $1 AND oidc_subject = $2', [issuer, subject])).rows[0]
   }
 
-  // ── web sessions ──────────────────────────────────────────────────────────
-  async createSession(userId: string, ttlMs: number): Promise<{ token: string; expiresAt: number }> {
-    const token = randomToken()
-    const expiresAt = Date.now() + ttlMs
-    await this.pool.query('INSERT INTO sessions (id, user_id, expires_at) VALUES ($1,$2,$3)', [digest(token), userId, new Date(expiresAt)])
-    return { token, expiresAt }
+  async createSession(userId: string, ttlMs: number) {
+    return this.sessions.create(userId, ttlMs)
   }
-  async sessionUser(token: string): Promise<UserRow | undefined> {
-    if (!token) return undefined
-    const result = await this.pool.query(
-      'SELECT u.* FROM sessions s JOIN users u ON u.id = s.user_id WHERE s.id = $1 AND s.expires_at > now() AND u.disabled = false',
-      [digest(token)])
-    return result.rows[0]
+
+  async sessionUser(token: string) {
+    return this.sessions.user(token)
   }
+
   async clearOtherSessions(keepToken?: string): Promise<void> {
-    if (keepToken) await this.pool.query('DELETE FROM sessions WHERE id <> $1', [digest(keepToken)])
-    else await this.pool.query('DELETE FROM sessions')
+    return this.sessions.clearOthers(keepToken)
   }
+
   async deleteSession(token: string): Promise<void> {
-    if (token) await this.pool.query('DELETE FROM sessions WHERE id = $1', [digest(token)])
+    return this.sessions.delete(token)
   }
   async getSetting<T>(key: string): Promise<T | undefined> {
     const result = await this.pool.query('SELECT value FROM server_settings WHERE key = $1', [key])
@@ -691,67 +575,25 @@ export class Store {
     return result.rows.map((row: any) => ({ at: row.at, actor: row.actor, action: row.action, userId: row.user_id, detail: row.detail }))
   }
 
-  /** Issue a 6-digit code; only its keyed digest is stored. Caller decides delivery. */
-  async issueEmailCode(email: string, purpose: string, ttlMs = 600_000): Promise<string> {
-    const value = email.trim().toLowerCase()
-    const last = await this.pool.query(
-      'SELECT created_at FROM email_codes WHERE email = $1 AND purpose = $2 ORDER BY created_at DESC LIMIT 1', [value, purpose])
-    if (last.rows[0]) {
-      const age = Date.now() - new Date(last.rows[0].created_at).getTime()
-      if (age < 60_000) throw new ApiError('EMAIL_RATE_LIMITED', 429)
-    }
-    // Per-mailbox quota: five codes per hour and twenty per day, across purposes.
-    const counts = await this.pool.query(
-      "SELECT count(*) FILTER (WHERE created_at > now() - interval '1 hour')::int AS hour, count(*)::int AS day " +
-      "FROM email_codes WHERE email = $1 AND created_at > now() - interval '1 day'", [value])
-    const hour = counts.rows[0]?.hour ?? 0
-    const day = counts.rows[0]?.day ?? 0
-    if (hour >= 5 || day >= 20) throw new ApiError('EMAIL_QUOTA_EXCEEDED', 429)
-    await this.cleanupEmailCodes()
-    const code = String(randomInt(0, 1_000_000)).padStart(6, '0')
-    await this.pool.query(
-      'INSERT INTO email_codes (id, email, purpose, code_hash, expires_at) VALUES ($1,$2,$3,$4,$5)',
-      [randomUUID(), value, purpose, await this.secrets.codeDigest(code, value, purpose), new Date(Date.now() + ttlMs)])
-    return code
+  async issueEmailCode(email: string, purpose: string, ttlMs = 600_000) {
+    return this.emailCodes.issue(email, purpose, ttlMs)
   }
 
-  private lastSweep = 0
-  /** Drop codes that expired more than a day ago; cheap and idempotent. */
   async cleanupEmailCodes(): Promise<void> {
-    if (Date.now() - this.lastSweep < 60_000) return
-    this.lastSweep = Date.now()
-    await this.pool.query("DELETE FROM email_codes WHERE expires_at < now() - interval '1 day'").catch(() => undefined)
+    return this.emailCodes.cleanup()
   }
 
-  async checkEmailCode(email: string, purpose: string, code: string): Promise<boolean> {
-    const value = email.trim().toLowerCase()
-    const row = await this.pool.query(
-      'SELECT id, code_hash, expires_at, attempts FROM email_codes WHERE email = $1 AND purpose = $2 AND consumed_at IS NULL ORDER BY created_at DESC LIMIT 1',
-      [value, purpose])
-    const record = row.rows[0]
-    if (!record) return false
-    if (new Date(record.expires_at).getTime() < Date.now()) return false
-    // Charge the attempt first so concurrent guesses cannot all observe attempts=0.
-    const charged = await this.pool.query(
-      'UPDATE email_codes SET attempts = attempts + 1 WHERE id = $1 AND consumed_at IS NULL AND attempts < 5', [record.id])
-    if ((charged.rowCount ?? 0) === 0) return false
-    const expected = Buffer.from(record.code_hash)
-    const actual = Buffer.from(await this.secrets.codeDigest(code.trim(), value, purpose))
-    return expected.length === actual.length && timingSafeEqual(expected, actual)
+  async checkEmailCode(email: string, purpose: string, code: string) {
+    return this.emailCodes.check(email, purpose, code)
   }
 
   async markEmailCodeConsumed(email: string, purpose: string): Promise<void> {
-    await this.pool.query(
-      'UPDATE email_codes SET consumed_at = now() WHERE email = $1 AND purpose = $2 AND consumed_at IS NULL',
-      [email.trim().toLowerCase(), purpose])
+    return this.emailCodes.markConsumed(email, purpose)
   }
 
-  async consumeEmailCode(email: string, purpose: string, code: string): Promise<boolean> {
-    if (!(await this.checkEmailCode(email, purpose, code))) return false
-    await this.markEmailCodeConsumed(email, purpose)
-    return true
+  async consumeEmailCode(email: string, purpose: string, code: string) {
+    return this.emailCodes.consume(email, purpose, code)
   }
-
 
   async setUsername(userId: string, username: string): Promise<void> {
     await this.pool.query('UPDATE users SET username = $2 WHERE id = $1', [userId, username.trim().toLowerCase()])
