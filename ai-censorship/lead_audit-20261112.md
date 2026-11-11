@@ -68,3 +68,15 @@ Chromium（真库）                 70/70
 - contract 复审：**APPROVE**（SSO-only 四处一致、D15 对 tag 历史成立、预算/计数/gate 无漂移）
 - 复审后补：恢复被上一轮删除的 `admin password reset removed` 断言；修正审计报告里的 CI 触发描述
 - 剩余 P2：D12–D15；审计可用性现在位于登录关键路径（失败返回 INTERNAL_ERROR，可考虑 503/readiness 提示）
+
+## 审计闭环（2026-11-12）
+
+- **P0**：0 项未关闭。第二轮 M5 设备重命名、审计失败吞异常均已修复并有用例。
+- **P1**：0 项未关闭。OIDC audit await、SSO-only 文档四处一致，均由 security / contract 复审确认。
+- **复审**：security **APPROVE**（10/10 清单）、contract **APPROVE**（SSO/D15/预算/计数无漂移）。
+- **残余 P2**：D12（gateway WS 级中继回归）、D13（四个零余量文件）、D14（M4 两层限流 + S1–S11 覆盖门禁）、D15（发布线倒挂）。全部已登记在 root.ai.md §15。
+- **代码状态**：HEAD `8343d4b`，工作树干净；修复已 push 到 `feat/multi-user-auth`。
+- **发布状态**：修复尚未随 tag 发布；当前版本仍 1.15.16。按 D15，下一版应为 **1.17.0**。
+- **最终门禁**：verify 394 断言（server 300 + protocol 94）、test:pg 9、browser 70/70、journey 60/60、guard 12/12。
+
+结论：**审计闭环**。无未关闭的 P0/P1；P2 进入下一阶段目标。
