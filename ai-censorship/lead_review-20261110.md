@@ -514,3 +514,11 @@ Chromium（browser-check，真库 dsh_browser2）     70/70
 3. **浏览器层没覆盖 D10 的真实状态** → browser-check 直接向真库插入一条 `secret IS NULL` 的遗留密钥，断言先显示「不可回显（旧密钥）」，点「轮换」后变成可回显（68→70 条）。
 4. **轮换与 legacy 列回写非原子，且该列已是死列** → 删除 `users.device_key_hash` 回写（`verifyDeviceCredential` 只查 `device_keys`），同时去掉一次重复 digest；store 774→770。
 5. **行数口径 off-by-one** → `799→770`（预算单位），D2 改为 770（readLines），与 §4.3 规则 5 一致。
+
+## 发布结果（推送后核对）
+
+- CI run 42987159407：Check and test ✓ / Build image (no push) ✓ / Store smoke on PostgreSQL ✓
+- Release run 42987159453：Validate tag against package version ✓ / Create GitHub release ✓ / Publish image ✓
+- GitHub Release：https://github.com/WU-HINS/ds-harness-remote/releases/tag/v1.15.15
+- 镜像 tag：`ghcr.io/wu-hins/ds-harness-remote/server` → `1.15.15`、`1.15`、`latest`
+- tag 指向提交：`74fac73 feat(account): rotate a device key in place, close D10`
