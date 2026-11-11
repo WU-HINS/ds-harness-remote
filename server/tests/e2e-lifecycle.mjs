@@ -74,7 +74,7 @@ const sessionReg = await req('/api/v1/devices/register', { method: 'POST', heade
 check('11 account token enrols a device (legacy compat)', sessionReg.status === 200, String(sessionReg.status))
 
 const adminRevoke = await req('/api/v1/account/device-keys/' + firstKeyId, { method: 'DELETE', headers: { cookie: admin } })
-check('[M1] 11b other accounts cannot revoke this key', adminRevoke.status === 404, String(adminRevoke.status))
+check('[M1] [S4] 11b other accounts cannot revoke this key', adminRevoke.status === 404, String(adminRevoke.status))
 const revoked = await req('/api/v1/account/device-keys/' + firstKeyId, { method: 'DELETE', headers: { cookie: aliceCookie } })
 check('12 revoke by key id', revoked.status === 200)
 check('13 device A loses access', (await req('/api/v1/me', { headers: { authorization: 'Bearer ' + regA.body.accessToken } })).status === 401)
@@ -97,7 +97,7 @@ const ssoOn = await req('/api/v1/admin/settings', { method: 'PUT', headers: { 'c
 check('28 only-SSO enabled', ssoOn.status === 200 && ssoOn.body.oidc.onlySso === true)
 check('28 password login blocked', (await req('/api/v1/auth/login', { method: 'POST', ...json({ username: 'alice', password: 'alice-password-123' }) })).status === 403)
 // SSO-only no longer narrows the *username*: the device key is the credential.
-check('28 standard username works with a device key under onlySso', (await req('/api/v1/auth/login', { method: 'POST', ...json({ username: 'alice', password: key2.body.key }) })).status === 200)
+check('[S10] 28 standard username works with a device key under onlySso', (await req('/api/v1/auth/login', { method: 'POST', ...json({ username: 'alice', password: key2.body.key }) })).status === 200)
 check('28 device username still works', (await req('/api/v1/auth/login', { method: 'POST', ...json({ username: aliceRow.deviceUsername, password: key2.body.key }) })).status === 200)
 
 // 部分更新不应清空配置

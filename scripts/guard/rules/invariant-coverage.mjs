@@ -4,7 +4,7 @@ import { walk } from '../lib.mjs'
 
 /** Only the first literal argument of a test call is a named case. */
 const NAMED_CASE = /(?:\bcheck|\bexpectReject|\bit|\btest)\(\s*(['"`])([^'"`]*?)\1/g
-const INVARIANT_ID = /\[(O[1-7]|M[1-5]|K[1-7])\]/g
+const INVARIANT_ID = /\[(O[1-7]|M[1-5]|K[1-7]|S(?:[1-9]|1[01]))\]/g
 
 /** Remove comments while preserving string literals, so a commented tag cannot count. */
 function stripComments(source) {
@@ -27,7 +27,7 @@ function stripComments(source) {
 
 export const rule = {
   id: 'invariant-coverage',
-  title: 'C1/C2/C3 的每条不变量都必须有具名用例（[O1]…[K7]）',
+  title: 'S1–S11 / O1–O7 / M1–M5 / K1–K7 的每条不变量都必须有具名用例',
   run(ctx) {
     const required = Object.keys(ctx.policy.invariants ?? {})
     const covered = new Set()

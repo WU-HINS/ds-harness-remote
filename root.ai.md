@@ -4,7 +4,7 @@
 
 > **位置**：项目根 `/data/dsh/workspace/ds-harness-remote/root.ai.md`。本文件管辖整个工作区，而不只是 `repo/`。
 > **权威**：本文件是唯一可编辑副本。仓库内的 `repo/root.ai.md` 是由本文件生成的镜像（随 git 版本化、供 CI 读取），禁止手改；改完这里运行 `pnpm guard --sync` 重建，漂移会让 `pnpm guard` 变红。
-> **生效**：2026-11-11 · 基线：服务端/前端 1.15.16，协议包 0.5.21 · 上游协议：liguobao/ds-harness-remote
+> **生效**：2026-11-12 · 基线：服务端/前端 1.17.0，协议包 0.5.21 · 上游协议：liguobao/ds-harness-remote
 
 ## 工作区布局（先认清哪里是「项目」）
 
@@ -86,19 +86,19 @@
 | 仓库形态 | pnpm workspace：`server`、`web`、`packages/*` | `pnpm-workspace.yaml` |
 | 上游 | liguobao/ds-harness-remote（完整协议）；本仓库是其服务端最小面独立实现 | 本文 §0.1 / §0.2 |
 | 本仓库独有能力 | C1 OIDC、C2 多用户、C3 单用户多密钥 | 本文 §6.1 |
-| 发布版本 | 1.15.16（`package.json`、`server/package.json`、`web/package.json` 三处同步） | `node scripts/guard/index.mjs --only version-lockstep` |
+| 发布版本 | 1.17.0（`package.json`、`server/package.json`、`web/package.json` 三处同步） | `node scripts/guard/index.mjs --only version-lockstep` |
 | 协议包版本 | 0.5.21，独立语义化，服务端以 `workspace:*` 依赖 | `packages/protocol/package.json` |
 | Node | `engines: >=22`；CI 用 24.9.0；镜像用 `node:22-bookworm-slim` | 三处都不得低于 engines |
 | 包管理器 | pnpm 9.15.4（`packageManager` 字段与 CI 一致） | `package.json` |
 | 服务端依赖 | `pg`、`ws`、`jose`、`nodemailer`、`zod` | `server/package.json` |
-| 测试栈 | `pg-mem` + 手写 `.mjs` 冒烟套件（14 套；`pg-smoke` 需 `DATABASE_URL`）；协议包用 `vitest`（9 套） | `server/scripts/smoke-store.sh` |
+| 测试栈 | `pg-mem` + 手写 `.mjs` 冒烟套件（16 套；`pg-smoke` 需 `DATABASE_URL`）；协议包用 `vitest`（9 套） | `server/scripts/smoke-store.sh` |
 | 协议一致性夹具 | `fixtures/protocol/v1`（11 个 JSON/README），由 `conformance-fixtures` 用例逐条校验 | `packages/protocol/tests/conformance-fixtures.test.ts` |
 | 测试基建 | `scripts/test-scenarios.mjs`：场景分组执行器，被 5 个协议用例导入 | `packages/protocol/tests/error-codes.test.ts` |
 | 数据库 | **仅 PostgreSQL**，声明式 schema，**没有迁移目录** | `server/src/schema.ts` |
 | 部署 | 单写者：进程启动即抢 `pg_try_advisory_lock('dsh_single_writer')` | `server/src/store-pg.ts` |
 | 中继带宽预算 | 普通账号合计 **5 MiB/s**，按权重分配；权重随账号自身吞吐衰减（占用越多份额越小） | `server/src/relay-budget.ts` |
 | 数据表 | `setup_lock`、`users`、`sessions`、`devices`、`device_tokens`、`device_keys`、`email_codes`、`server_settings`、`audit_log` | `server/src/schema.ts` |
-| 错误码 | 53 个，集中在 `new ApiError('…')` | `grep -rohE "new ApiError\('[A-Z_]+'" server/src --include='*.ts'` |
+| 错误码 | 54 个，集中在 `new ApiError('…')` | `grep -rohE "new ApiError\('[A-Z_]+'" server/src --include='*.ts'` |
 | 审计动作 | 34 个，形如 `device_key.created`；`AUDIT_ACTIONS` 为封闭集，未登记动作运行时拒绝 | `grep -rohE "audit\('[a-z_.]+'" server/src --include='*.ts'`；`server/src/store/core.ts` |
 | 存储方法 | `Store` 类 63 个方法（57 公开 / 6 私有），是唯一数据入口；域逻辑在 `server/src/store/*` | `server/src/store-pg.ts`（TS AST 计数） |
 
@@ -113,7 +113,7 @@
 | `pnpm build` | protocol → web(esbuild) → server(tsc) | 产物不成立 | 每次提交前 |
 | `pnpm -r check` | 三个包的类型检查 | 类型层已破 | 每次提交前 |
 | `pnpm guard` | 12 条静态不变量（见 §3.2） | 结构/契约/预算/不变量覆盖已漂移 | 每次提交前，CI 强制 |
-| `pnpm test` | = `pnpm -r test`：server 14 套冒烟（`pg-smoke` 需 `DATABASE_URL`）+ protocol 9 套 vitest | 行为回归 | 每次提交前 |
+| `pnpm test` | = `pnpm -r test`：server 16 套冒烟（`pg-smoke` 需 `DATABASE_URL`）+ protocol 9 套 vitest | 行为回归 | 每次提交前 |
 | `pnpm test:pg` | 同上但打真 PostgreSQL | pg-mem 掩盖了方言差异 | 涉及 SQL、索引、事务、锁时 |
 | `node server/scripts/protocol-walkthrough.mjs` | 双端协议走查 | 帧语义与客户端不兼容 | 改动 `packages/protocol/src` 时 |
 | `node server/scripts/client-compat-walkthrough.mjs` | 旧客户端兼容 | 老客户端会断 | 改动握手/认证帧时 |
@@ -142,7 +142,7 @@
 | `version-lockstep` | 三处发布版本一致；协议包独立版本；依赖必须是 `workspace:*` |
 | `secret-scan` | 源码与文档不得出现真实凭据（私钥、AKIA、ghp_、Slack、字面 JWT） |
 | `root-mirror` | 仓库内的 `root.ai.md` 必须是项目根版本的逐字镜像（由 `--sync` 生成，不允许手改） |
-| `invariant-coverage` | C1/C2/C3 的 19 条不变量（O1–O7、M1–M5、K1–K7）每条都必须在测试名里有 `[ID]` 具名用例；缺失即失败 |
+| `invariant-coverage` | S1–S11 / O1–O7 / M1–M5 / K1–K7 共 **30 条**不变量，每条都必须在测试名里有 `[ID]` 具名用例；缺失即失败 |
 | `fork-surface` | 每条 `/api` 路由必须落在已登记的能力家族内；新家族不登记即失败（§0.1 准入三问的机器化） |
 
 阈值与豁免**只允许**在 `scripts/guard/policy.json` 里改。改阈值是评审事项，不是实现细节；豁免必须带 `reason`，并且要能在债务登记（§15）里找到对应条目。
@@ -232,7 +232,7 @@
 
 ### 6.1 三条差异化能力的不变量（C1 / C2 / C3）
 
-违反任一条 = **P0**；每条都必须在测试名里有 `[O1]`…`[K7]` 具名用例，由 `invariant-coverage` 强制，缺用例 = P1。
+违反任一条 = **P0**；S1–S11 与 C1/C2/C3 的每条都必须在测试名里有 `[S1]`…`[K7]` 具名用例，由 `invariant-coverage` 强制，缺用例 = P1。
 
 **C1 · OIDC（O1–O7）**
 
@@ -274,7 +274,7 @@
 
    `{ "error": { "code": "RATE_LIMITED", "message": "…", "requestId": "uuid", "retryable": true } }`
 
-2. **错误码是封闭集合**（当前 53 个）。新增错误码必须在同一次提交里更新 `docs/api.md` 与本文 §7 的清单。
+2. **错误码是封闭集合**（当前 54 个）。新增错误码必须在同一次提交里更新 `docs/api.md` 与本文 §7 的清单。
 3. 路由前缀固定 `/api/v1`；探测端点（`/healthz`、`/ready`）不带前缀。
 4. `:id` 家族在文档里写成 `:id`，不写具体 UUID。
 5. **兼容性即承诺**：已发布的端点改名、改返回结构、改语义 = P1。要废弃必须先加兼容期，并在 `docs/api.md` 与发布说明双处公告。
@@ -393,8 +393,8 @@
 | D11 | `gateway.ts` HEAD 677 → 733（未提交中间态）→ 621 | 已关闭（P1） | 已抽出 `server/src/gateway-admission.ts`（帧窗口、掉线链路墓碑、加权带宽、发送队列），`gateway.ts` 733→621、预算 621；回归 `server/tests/admission-smoke.mjs`（24 条断言）。 |
 | D12 | `gateway.ts` 的 `shouldQueue` 调用点只有单元测试 | 已关闭 | `gateway-admission-integration.mjs` 直接驱动 Gateway：耗尽额度→排队→等待补额→后帧仍入队（3 条断言）；改回 take-then-enqueue 会红 |
 | D13 | 四个预算文件全部 0 余量（app 665 / store 607 / gateway 621 / protocol 1473），file-budget 在 equality 时无提示 | 已关闭 | `gateway.ts` 已拆到 556（`gateway-support.ts` + 认证帧路径）；`file-budget` 在等于预算时输出「已到预算上限」；app/store/protocol 仍零余量，后续按需拆 |
-| D14 | M4 的每用户请求/分钟与并发连接两层没有具名用例；S1–S11 仍无覆盖门禁 | P2 | 补 `[M4]` 用例，并把 invariant-coverage 扩展到 S1–S11 |
-| D15 | 发布线倒挂：v1.16.0–v1.16.2 是 2026-11-09 的历史过渡版本（含旧内容），当前分支线为 1.15.16；若发 1.15.17，tag 数值低于已有的 1.16.2，`latest` 语义倒退 | P2 | 下一版改用 1.17.0，或经授权删除 1.16.x tag/镜像后继续 1.15.x |
+| D14 | M4 的每用户请求/分钟与并发连接两层没有具名用例；S1–S11 无覆盖门禁 | 已关闭 | 已补 `[M4]` 请求限流与真实 WS 并发上限用例；`invariant-coverage` 扩展到 S1–S11（30/30） |
+| D15 | 发布线倒挂：v1.16.0–v1.16.2 是 2026-11-09 的历史过渡版本，当前分支线曾为 1.15.16 | 已关闭 | 已改用 1.17.0 发布（tag `v1.17.0`），数值高于 1.16.2，`latest` 向前移动 |
 
 ---
 

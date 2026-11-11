@@ -4,6 +4,9 @@ Every JSON endpoint answers `{ "error": { "code", "message", "requestId", "retry
 success shape documented below on success. Web sessions use the `dsh_session` cookie; device endpoints use
 `Authorization: Bearer <accessToken>`. All paths live under the single prefix `/api/v1` except the probes below.
 
+Audit writes are fail-closed: if the audit row cannot be written, the request fails with
+`503 AUDIT_UNAVAILABLE` instead of returning a success that has no audit trail.
+
 ## Probes and pages
 
 | Method | Path | Purpose |

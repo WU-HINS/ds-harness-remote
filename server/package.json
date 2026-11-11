@@ -1,6 +1,6 @@
 {
   "name": "@dsh-remote/server",
-  "version": "1.15.16",
+  "version": "1.17.0",
   "private": false,
   "type": "module",
   "scripts": {

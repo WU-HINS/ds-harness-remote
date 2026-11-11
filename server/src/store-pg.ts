@@ -601,6 +601,6 @@ export class Store {
   async audit(action: string, actor?: string, userId?: string, detail?: unknown): Promise<void> {
     if (!AUDIT_ACTIONS.has(action)) throw new ApiError('INTERNAL_ERROR', 500)
     await this.pool.query('INSERT INTO audit_log (actor, user_id, action, detail) VALUES ($1,$2,$3,$4)',
-      [actor ?? null, userId ?? null, action, detail === undefined ? null : JSON.stringify(detail)])
+      [actor ?? null, userId ?? null, action, detail === undefined ? null : JSON.stringify(detail)]).catch(() => { throw new ApiError('AUDIT_UNAVAILABLE', 503) })
   }
 }

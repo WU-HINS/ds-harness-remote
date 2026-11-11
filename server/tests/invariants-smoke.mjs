@@ -1,12 +1,15 @@
+import { readFileSync } from 'node:fs'
 import { newTestDb } from './lib/pg-mem.mjs'
-import { Store, ApiError } from './build/store-pg.js'
+import { Store, ApiError, digest } from './build/store-pg.js'
+import { redactSensitive } from './build/logger.js'
 
 let pass = 0, fail = 0
 const check = (name, ok, extra = '') => { ok ? pass++ : fail++; console.log((ok ? 'PASS ' : 'FAIL ') + name + (extra ? ' :: ' + extra : '')) }
 
 const db = newTestDb({ autoCreateForeignKeyIndices: true })
 const { Pool } = db.adapters.createPg()
-const store = new Store(new Pool())
+const pool = new Pool()
+const store = new Store(pool)
 await store.migrate()
 const alice = await store.createUser({ username: 'alice', password: 'alice-password-123' })
 
@@ -32,8 +35,10 @@ try { await store.audit('ghost.action', 'test') } catch (error) { refused = erro
 check('[M5] unregistered audit actions are refused', refused)
 const broken = new Store({ query: async () => { throw new Error('db down') } })
 let surfaced = false
-try { await broken.audit('device.removed') } catch { surfaced = true }
+try { await broken.audit('device.removed') } catch (error) { surfaced = error instanceof ApiError && error.code === 'AUDIT_UNAVAILABLE' && error.status === 503 }
 check('[M5] audit failures are not swallowed', surfaced)
+const appSource = readFileSync(new URL('./src/app.ts', import.meta.url), 'utf8')
+check('[M5] OIDC success audit is awaited', /await store\.audit\('oidc\.success'/.test(appSource) && !/void store\.audit/.test(appSource))
 const noConnect = new Store({ connect: async () => { throw new Error('connect refused') } })
 let leaseFailed = false
 try { await noConnect.acquireInstanceLease() } catch { leaseFailed = true }
@@ -42,6 +47,23 @@ const lockedStore = new Store({ connect: async () => ({ query: async () => ({ ro
 let locked = false
 try { await lockedStore.acquireInstanceLease() } catch (error) { locked = error instanceof ApiError && error.code === 'INSTANCE_LOCKED' }
 check('a second writer is refused', locked)
+
+// S1: relay handling must not persist or log payloads.
+const gatewaySource = readFileSync(new URL('./src/gateway.ts', import.meta.url), 'utf8')
+check('[S1] gateway never persists or audits relay payloads', !/INSERT INTO|store\.audit|logger\.[A-Za-z]+\([^)]*(?:frame|next)\.payload/.test(gatewaySource))
+
+// S2: password hashing and session-token storage.
+const storedUser = (await pool.query('SELECT password_hash FROM users WHERE id = $1', [alice.user.id])).rows[0]
+const session = await store.createSession(alice.user.id, 60_000)
+const sessionRow = (await pool.query('SELECT id FROM sessions WHERE user_id = $1', [alice.user.id])).rows[0]
+check('[S2] passwords use scrypt and session tokens are digests', storedUser?.password_hash?.startsWith('scrypt$') === true
+  && sessionRow?.id === digest(session.token) && sessionRow?.id !== session.token)
+
+// S11: redaction applies to keys and values at depth.
+const redacted = redactSensitive({ authorization: 'Bearer abc', password: 'pw', nested: { accessToken: 'tok' } })
+const redactedJson = JSON.stringify(redacted)
+check('[S11] sensitive fields are redacted at depth', redactedJson.includes('REDACTED')
+  && !redactedJson.includes('abc') && !redactedJson.includes('"pw"') && !redactedJson.includes('tok'), redactedJson)
 
 console.log('\n' + pass + ' passed, ' + fail + ' failed')
 process.exitCode = fail === 0 ? 0 : 1

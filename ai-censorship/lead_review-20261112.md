@@ -45,3 +45,29 @@ Chromium（真库）                 70/70
 - M3：D14（M4 每用户两层限流 + S1–S11 覆盖门禁）
 - M4：审计可用性（AUDIT_UNAVAILABLE / readiness + OIDC 审计失败回归）
 - M5：发布 1.17.0（D15）
+
+---
+
+# 目标轮 2 · M3/M4/M5：D14、审计可用性、发布 1.17.0
+
+## M3 · D14 关闭
+
+- `invariant-coverage` 扩展为 **30 条**：S1–S11 + O1–O7 + M1–M5 + K1–K7；策略、规则标题、§3.2/§6 同步。
+- 新增/具名覆盖：
+  - S1 静态断言 Gateway 不写库/不审计中继 payload；S2 口令 scrypt + 会话摘要；
+  - S3/S4/S5/S6/S7/S8/S9/S10 复用并标注既有用例；S11 日志脱敏（key + 值 + 深度）。
+- M4 每用户请求限流：独立用户实测 `[200,200,200,429]`，不影响其他租户。
+- M4 并发连接上限：新增 `gateway-connection-limit.mjs`，真实 WS：首个 hello.ack，第二个同用户连接 `RATE_LIMITED`。
+
+## M4 · 审计可用性
+
+- `store.audit()` 失败改为 `AUDIT_UNAVAILABLE`（503），不再抛裸 DB 错误；错误码 53→54，`docs/api.md` 写明 fail-closed。
+- OIDC 成功审计已 `await`（上一轮修复），新增静态断言 `[M5] OIDC success audit is awaited`，防止回退成 `void`。
+- `invariants-smoke` 断言失败 pool 返回 503 且进程存活。
+
+## M5 · 发布 1.17.0
+
+- 三处 `package.json` = 1.17.0；协议 0.5.21；`root.ai.md` 头行与 §2 同步。
+- D15 关闭：1.17.0 > 1.16.2，`latest` 向前移动。
+- 最终门禁：verify **405** 断言（server 311 + protocol 94）、test:pg 9、browser 70/70、journey 60/60、guard 12/12。
+- tag `v1.17.0` 与镜像 `1.17.0 / 1.17 / latest` 在推送后核对。

@@ -35,7 +35,7 @@ let aliceKeys = await store.listDeviceKeys(alice.user.id)
 let firstRow = aliceKeys.find((k) => k.id === firstKey.id)
 check('live key echoes back unchanged', firstRow?.revealable === true && firstRow?.key === firstKey.key)
 const stored = (await pool.query('SELECT key_hash, secret FROM device_keys WHERE id = $1', [firstKey.id])).rows[0]
-check('[K2] storage is a digest plus a sealed copy', stored?.key_hash === digest(firstKey.key)
+check('[K2] [S3] storage is a digest plus a sealed copy', stored?.key_hash === digest(firstKey.key)
   && stored?.secret !== firstKey.key && typeof stored?.secret === 'string')
 await store.revokeDeviceKey(firstKey.id, alice.user.id)
 firstRow = (await store.listDeviceKeys(alice.user.id)).find((k) => k.id === firstKey.id)

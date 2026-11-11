@@ -41,10 +41,10 @@ check('comma list rejected', clientAddress(fakeReq('127.0.0.1', { 'x-real-ip': '
 const setup = await req('/api/v1/setup', { method: 'POST', ...json({ key: setupKey, username: 'admin@example.com', password: 'admin-password-123' }) })
 check('setup with key creates admin', setup.status === 201 && typeof setup.body.deviceKey === 'string')
 check('setup closes afterwards', (await req('/setup')).status === 302)
-check('replaying the setup key is refused', (await req('/api/v1/setup', { method: 'POST', ...json({ key: setupKey, username: 'mallory', password: 'mallory-password-1' }) })).status === 409)
+check('[S9] replaying the setup key is refused', (await req('/api/v1/setup', { method: 'POST', ...json({ key: setupKey, username: 'mallory', password: 'mallory-password-1' }) })).status === 409)
 
 const csrfOrigin = await req('/api/v1/auth/login', { method: 'POST', headers: { 'content-type': 'application/json', origin: 'https://evil.example' }, body: JSON.stringify({ email: 'admin@example.com', password: 'x' }) })
-check('cross-origin POST rejected', csrfOrigin.status === 403, String(csrfOrigin.status))
+check('[S6] cross-origin POST rejected', csrfOrigin.status === 403, String(csrfOrigin.status))
 const csrfFetch = await req('/api/v1/auth/login', { method: 'POST', headers: { 'content-type': 'application/json', 'sec-fetch-site': 'cross-site' }, body: JSON.stringify({ email: 'admin@example.com', password: 'x' }) })
 check('cross-site fetch metadata rejected', csrfFetch.status === 403, String(csrfFetch.status))
 
@@ -74,7 +74,7 @@ const storedLimits = await pool.query("SELECT value FROM server_settings WHERE k
 const storedConn = storedLimits.rows[0]?.value?.limits?.userConnectionLimit
 check('invalid limits rejected', badLimits.status === 400 && afterBad.body.limits.userConnectionLimit === 16 && storedConn !== -5, badLimits.status + ' | api=' + afterBad.body.limits.userConnectionLimit + ' db=' + storedConn)
 
-check('csp blocks inline scripts', /script-src 'self' 'sha256-[A-Za-z0-9+/=]+'/.test(csp) && !/script-src[^;]*unsafe-inline/.test(csp), csp.slice(0, 90))
+check('[S8] csp blocks inline scripts', /script-src 'self' 'sha256-[A-Za-z0-9+/=]+'/.test(csp) && !/script-src[^;]*unsafe-inline/.test(csp), csp.slice(0, 90))
 const loginHtml = String(loginPageRes.body)
 check('assets are external', loginHtml.includes('src="/assets/app.') && loginHtml.includes('.js" defer></script>') && /<script>[^<]*localStorage/.test(loginHtml))
 
@@ -134,6 +134,14 @@ const bobDevice = await deviceFor('bob', 'bob-password-123', 'bob-host-1')
 check('both tenants registered a device', alice.status === 200 && bobDevice.status === 200)
 
 const aliceAuth = { authorization: 'Bearer ' + alice.access }
+const rateUser = await req('/api/v1/admin/users', { method: 'POST', headers: { 'content-type': 'application/json', cookie: adminCookie }, body: JSON.stringify({ username: 'rate@example.com', password: 'rate-password-123', role: 'user' }) })
+const rateDevice = await deviceFor('rate@example.com', 'rate-password-123', 'rate-host-1')
+const rateSet = await req('/api/v1/admin/settings', { method: 'PUT', headers: { 'content-type': 'application/json', cookie: adminCookie }, body: JSON.stringify({ limits: { userRatePerMinute: 3 } }) })
+const rateStatuses = []
+for (let i = 0; i < 4; i += 1) rateStatuses.push((await req('/api/v1/me', { headers: { authorization: 'Bearer ' + rateDevice.access } })).status)
+await req('/api/v1/admin/settings', { method: 'PUT', headers: { 'content-type': 'application/json', cookie: adminCookie }, body: JSON.stringify({ limits: { userRatePerMinute: 600 } }) })
+check('[M4] per-user request limit engages', rateUser.status === 201 && rateDevice.status === 200 && rateSet.status === 200
+  && rateStatuses.slice(0, 3).every(status => status === 200) && rateStatuses[3] === 429, JSON.stringify(rateStatuses))
 const list = await req('/api/v1/devices', { headers: aliceAuth })
 check('device list contains only own host', list.status === 200 && list.body.items.length === 1 && list.body.items[0].deviceId === 'alice-host-1')
 
@@ -184,7 +192,7 @@ const httpsApp = make({ DSH_SERVER_PUBLIC_URL: 'https://app.example.com', DSH_AN
 const httpsStart = await httpsApp.start()
 const secureLogin = await fetch('http://127.0.0.1:' + httpsStart.port + '/api/v1/auth/login', { method: 'POST', redirect: 'manual', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ email: 'bob', password: 'bob-password-123' }) })
 const secureCookie = secureLogin.headers.get('set-cookie') || ''
-check('https deployment sets Secure cookie', /; Secure/.test(secureCookie) && /HttpOnly/.test(secureCookie) && /SameSite=Lax/.test(secureCookie))
+check('[S5] https deployment sets Secure cookie', /; Secure/.test(secureCookie) && /HttpOnly/.test(secureCookie) && /SameSite=Lax/.test(secureCookie))
 await httpsApp.close()
 
 const formLogin = await req('/api/v1/auth/login', {
@@ -198,7 +206,7 @@ for (let i = 0; i < 80; i++) {
   const r = await req('/api/v1/auth/login', { method: 'POST', ...json({ username: 'nobody', password: 'wrong-password-123' }) })
   if (r.status === 429) { limited = r.headers.get('retry-after') === '60'; break }
 }
-check('[M4] anonymous rate limit engages', limited)
+check('[M4] [S7] anonymous rate limit engages', limited)
 
 // runtime public origin
 const adminRelogin = await req('/api/v1/auth/login', { method: 'POST', headers: { 'content-type': 'application/json', 'x-real-ip': '198.51.100.7' }, body: JSON.stringify({ email: 'admin@example.com', password: 'admin-password-123' }) })
