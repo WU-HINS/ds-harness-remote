@@ -38,7 +38,7 @@
 - **D13**：app 665 / store 607 / gateway 621 / protocol 1473 全部 0 余量。
 - **D14**：M4 每用户两层限流与 S1–S11 覆盖门禁未做。
 - **D15**：发布线倒挂（v1.16.0–1.16.2 历史 tag vs 1.15.16 当前线）；下一版建议 1.17.0，或授权清理 1.16.x。
-- 本轮修复提交在特性分支，CI 只在 main/tag 触发；HEAD 的 CI 证据要等 tag/合并。
+- 本轮修复提交在特性分支；CI 在 main / tag / PR 触发，裸分支 push 不触发，因此 HEAD 的 CI 证据要等 tag 或 PR。
 
 ## 门禁（本轮修复后）
 
@@ -61,3 +61,10 @@ Chromium（真库）                 70/70
 ## 结论
 
 第一轮 6 项修复全部验证；本轮 2 项 P0/P1 与 1 项文档 P1 已修，门禁全绿。未打新 tag；版本仍 1.15.16。**建议下一版用 1.17.0**（避开 1.16.x 倒挂），发布前由 CI 对 tag 复跑。
+
+## 复审结果
+
+- security 复审：**APPROVE**（10/10 清单通过；rename audit、OIDC await、admin toggle、lease 测试均实测）
+- contract 复审：**APPROVE**（SSO-only 四处一致、D15 对 tag 历史成立、预算/计数/gate 无漂移）
+- 复审后补：恢复被上一轮删除的 `admin password reset removed` 断言；修正审计报告里的 CI 触发描述
+- 剩余 P2：D12–D15；审计可用性现在位于登录关键路径（失败返回 INTERNAL_ERROR，可考虑 503/readiness 提示）

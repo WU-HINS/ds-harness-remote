@@ -90,7 +90,9 @@ const adminRow = await req('/api/v1/admin/users', { method: 'POST', headers: { '
 const adminId = adminRow.body.user && adminRow.body.user.id
 const disableAdmin = await req('/api/v1/admin/users/' + adminId, { method: 'PATCH', headers: { 'content-type': 'application/json', cookie: adminCookie }, body: JSON.stringify({ toggle: true }) })
 const deleteAdmin = await req('/api/v1/admin/users/' + adminId, { method: 'DELETE', headers: { cookie: adminCookie } })
+const resetAdminPw = await req('/api/v1/admin/users/' + adminId, { method: 'PATCH', headers: { 'content-type': 'application/json', cookie: adminCookie }, body: JSON.stringify({ password: 'hijacked-password' }) })
 check('[M2] admin accounts cannot be disabled', disableAdmin.status === 409 && disableAdmin.body.error.code === 'ADMIN_PROTECTED', String(disableAdmin.status))
+check('admin password reset removed', resetAdminPw.status === 409 && resetAdminPw.body.error.code === 'ADMIN_PROTECTED', String(resetAdminPw.status))
 check('admin accounts cannot be deleted', deleteAdmin.status === 409 && deleteAdmin.body.error.code === 'ADMIN_PROTECTED', String(deleteAdmin.status))
 const me = await req('/api/v1/auth/me', { headers: { cookie: adminCookie } })
 const selfDelete = await req('/api/v1/admin/users/' + me.body.user.id, { method: 'DELETE', headers: { cookie: adminCookie } })
