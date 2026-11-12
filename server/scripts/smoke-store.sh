@@ -45,6 +45,7 @@ node relay-queue-smoke.mjs
 node admission-smoke.mjs
 node gateway-admission-integration.mjs
 node gateway-connection-limit.mjs
+node gateway-link-flow.mjs
 node store-smoke.mjs
 node invariants-smoke.mjs
 node runtime-smoke.mjs

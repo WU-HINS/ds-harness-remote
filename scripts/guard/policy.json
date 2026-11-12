@@ -3,7 +3,7 @@
   "budgets": {
     "server/src/app.ts": 665,
     "server/src/store-pg.ts": 607,
-    "server/src/gateway.ts": 556,
+    "server/src/gateway.ts": 417,
     "packages/protocol/src/index.ts": 1473
   },
   "budgetedAbove": 600,
@@ -23,13 +23,7 @@
     "server/src/main.ts",
     "server/src/config.ts"
   ],
-  "consoleExemptions": [
-    {
-      "file": "server/src/app.ts",
-      "max": 1,
-      "reason": "route_not_found 兜底，接 logger 后删除"
-    }
-  ],
+  "consoleExemptions": [],
   "routeAllowlist": [],
   "docRoots": [
     "README.md",
@@ -78,7 +72,7 @@
     }
   ],
   "budgetNotes": {
-    "server/src/gateway.ts": "621→556：gateway-support.ts + 认证帧路径；预算 556 只降不升",
+    "server/src/gateway.ts": "556→417：抽出 gateway-links.ts 连接状态机；预算 417 只降不升",
     "server/src/store-pg.ts": "612→607：审计白名单与失败上抛、单写者租约失败上抛；累计 799→607",
     "server/src/app.ts": "1089→665（累计 1090→665）：分组路由表 + routes/* handler 模块；预算 665 只降不升"
   },

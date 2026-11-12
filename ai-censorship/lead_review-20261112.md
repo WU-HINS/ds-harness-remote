@@ -79,3 +79,30 @@ Chromium（真库）                 70/70
 - Release：https://github.com/WU-HINS/ds-harness-remote/releases/tag/v1.17.0
 - 镜像：`ghcr.io/wu-hins/ds-harness-remote/server` → `1.17.0`、`1.17`、`latest`
 - tag `v1.17.0` → `ae31289`
+
+---
+
+# 后续轮 · D3 + D5：连接状态机与日志出口
+
+## D3
+
+- 新增 `server/src/gateway-links.ts`（195 行）：`LinkRouter` 承接 connect.request、accept/reject、signal、secure.handshake、transport.selected、relay counter 校验、`authorizeIce`。
+- `gateway.ts` **556→417**；保留 `private get links()` 指向 router 的同一 Map，drop/disconnect/heartbeat/droppedLinks 无分裂。
+- 新增 `server/tests/gateway-link-flow.mjs`（11 条真实 WS）：hello → connect.request → pending ICE 拒绝 → accepted → ICE 允许 → handshake 1/2 → relay → 重复 counter 触发 `INVALID_MESSAGE` 并 drop → ICE 再拒。
+- D3 关闭；gateway 预算 417。
+
+## D5
+
+- `app.ts` 的 route_not_found 从 `console.warn` 改为 `Logger('http', settings.logLevel).warn('route_not_found', …)`。
+- `policy.consoleExemptions` 清空；`console-containment` 在无豁免下通过。
+- D5 关闭。
+
+## 门禁
+
+```
+pnpm verify（57 s）  build ✓ check ✓ guard 12/12 ✓ test ✓
+  protocol 94；server 322；合计 416 条断言，0 failed
+pnpm test:pg 9 passed；Chromium 70/70；真 SMTP+OIDC 60/60
+```
+
+`reviewer-diff2`：**APPROVE**（0 P0/P1）；唯一 P2（连接状态机无本地用例）已由 `gateway-link-flow.mjs` 关闭。

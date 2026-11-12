@@ -91,7 +91,7 @@
 | Node | `engines: >=22`；CI 用 24.9.0；镜像用 `node:22-bookworm-slim` | 三处都不得低于 engines |
 | 包管理器 | pnpm 9.15.4（`packageManager` 字段与 CI 一致） | `package.json` |
 | 服务端依赖 | `pg`、`ws`、`jose`、`nodemailer`、`zod` | `server/package.json` |
-| 测试栈 | `pg-mem` + 手写 `.mjs` 冒烟套件（16 套；`pg-smoke` 需 `DATABASE_URL`）；协议包用 `vitest`（9 套） | `server/scripts/smoke-store.sh` |
+| 测试栈 | `pg-mem` + 手写 `.mjs` 冒烟套件（17 套；`pg-smoke` 需 `DATABASE_URL`）；协议包用 `vitest`（9 套） | `server/scripts/smoke-store.sh` |
 | 协议一致性夹具 | `fixtures/protocol/v1`（11 个 JSON/README），由 `conformance-fixtures` 用例逐条校验 | `packages/protocol/tests/conformance-fixtures.test.ts` |
 | 测试基建 | `scripts/test-scenarios.mjs`：场景分组执行器，被 5 个协议用例导入 | `packages/protocol/tests/error-codes.test.ts` |
 | 数据库 | **仅 PostgreSQL**，声明式 schema，**没有迁移目录** | `server/src/schema.ts` |
@@ -113,7 +113,7 @@
 | `pnpm build` | protocol → web(esbuild) → server(tsc) | 产物不成立 | 每次提交前 |
 | `pnpm -r check` | 三个包的类型检查 | 类型层已破 | 每次提交前 |
 | `pnpm guard` | 12 条静态不变量（见 §3.2） | 结构/契约/预算/不变量覆盖已漂移 | 每次提交前，CI 强制 |
-| `pnpm test` | = `pnpm -r test`：server 16 套冒烟（`pg-smoke` 需 `DATABASE_URL`）+ protocol 9 套 vitest | 行为回归 | 每次提交前 |
+| `pnpm test` | = `pnpm -r test`：server 17 套冒烟（`pg-smoke` 需 `DATABASE_URL`）+ protocol 9 套 vitest | 行为回归 | 每次提交前 |
 | `pnpm test:pg` | 同上但打真 PostgreSQL | pg-mem 掩盖了方言差异 | 涉及 SQL、索引、事务、锁时 |
 | `node server/scripts/protocol-walkthrough.mjs` | 双端协议走查 | 帧语义与客户端不兼容 | 改动 `packages/protocol/src` 时 |
 | `node server/scripts/client-compat-walkthrough.mjs` | 旧客户端兼容 | 老客户端会断 | 改动握手/认证帧时 |
@@ -176,7 +176,7 @@
 |---|---|
 | `server/src/app.ts` | 665（1089→665；累计 1090→665：分组路由表 + `routes/*` handler 模块） |
 | `server/src/store-pg.ts` | 607（612→607：审计白名单与失败上抛、单写者租约失败上抛；累计 799→607） |
-| `server/src/gateway.ts` | 556（621→556：`gateway-support.ts` + 认证帧路径；累计 733→556） |
+| `server/src/gateway.ts` | 417（556→417：抽出 `gateway-links.ts` 连接状态机；累计 733→417） |
 | `packages/protocol/src/index.ts` | 1473 |
 
 规则：
@@ -382,9 +382,9 @@
 |---|---|---|---|
 | D1 | `server/src/app.ts` 1090 行：路由分发、handler、页面装配混在一处 | 已关闭 | 已拆出分组路由表与 `routes/admin.ts`、`routes/auth-flows.ts`；`app.ts` 1089→665（累计 1090→665）；分组表在 app.ts，exact 路径在 `routes/*`，`route-doc-sync` 同时扫描两者 |
 | D2 | `server/src/store-pg.ts` 770 行：连接、认证、设备、审计、设置混在一个类 | 已关闭 | 已拆出 `store/core.ts`、`store/device-keys.ts`、`store/sessions.ts`、`store/email-codes.ts`；`store-pg.ts` 770→612（拆分）、612→607（审计/租约修复），Store 仍是唯一事务与数据入口 |
-| D3 | `server/src/gateway.ts` 556 行：连接状态机与链路转发仍在同一类 | P2 | 拆出连接状态机（帧窗口/带宽/队列已随 D11、类型/诊断已随 D13 抽出） |
+| D3 | `server/src/gateway.ts` 连接状态机与链路转发曾在同一类 | 已关闭 | 已抽出 `gateway-links.ts`（connect/signal/handshake/transport/relay counter），`gateway.ts` 556→417；`gateway-link-flow.mjs` 11 条真实 WS 用例 |
 | D4 | `packages/protocol/src/index.ts` 1473 行 | P2 | 按帧类型拆文件，导出面不变 |
-| D5 | `app.ts` 里仍有 1 处 `console.warn`（route_not_found 兜底） | P2 | 接入 `logger.ts` 后删除该豁免 |
+| D5 | `app.ts` 里曾有 1 处 `console.warn`（route_not_found 兜底） | 已关闭 | 改为 `logger.warn('route_not_found', …)`；`consoleExemptions` 清空 |
 | D6 | CSP 的 `style-src 'unsafe-inline'` | P2 | 样式外置或 nonce 化后收紧 |
 | D7 | 管理端设备密钥端点曾在文档中承诺但代码未实现（已修文档） | 已关闭 | 若确需该能力，先写代码，再写文档 |
 | D8 | `docs/security.md` 曾写「设备密钥只存摘要、明文只显示一次」，与实现（加密副本、可再次查看）相反 | 已关闭（P0） | 已按 K2 改写；改该段必须同步 §6.1 |
@@ -392,7 +392,7 @@
 | D10 | 迁移遗留密钥（无密封副本）曾只能标记为不可回显 | 已关闭 | 已暴露 `POST /api/v1/account/device-keys/:id/rotate`（原地换密、保留绑定、审计 `device_key.rotated`），界面提供「轮换」；store / HTTP / 浏览器三层断言 |
 | D11 | `gateway.ts` HEAD 677 → 733（未提交中间态）→ 621 | 已关闭（P1） | 已抽出 `server/src/gateway-admission.ts`（帧窗口、掉线链路墓碑、加权带宽、发送队列），`gateway.ts` 733→621、预算 621；回归 `server/tests/admission-smoke.mjs`（24 条断言）。 |
 | D12 | `gateway.ts` 的 `shouldQueue` 调用点只有单元测试 | 已关闭 | `gateway-admission-integration.mjs` 直接驱动 Gateway：耗尽额度→排队→等待补额→后帧仍入队（3 条断言）；改回 take-then-enqueue 会红 |
-| D13 | 四个预算文件全部 0 余量（app 665 / store 607 / gateway 621 / protocol 1473），file-budget 在 equality 时无提示 | 已关闭 | `gateway.ts` 已拆到 556（`gateway-support.ts` + 认证帧路径）；`file-budget` 在等于预算时输出「已到预算上限」；app/store/protocol 仍零余量，后续按需拆 |
+| D13 | 四个预算文件全部 0 余量（app 665 / store 607 / gateway 621 / protocol 1473），file-budget 在 equality 时无提示 | 已关闭 | `gateway.ts` 已拆到 417（`gateway-support.ts` + `gateway-links.ts`）；`file-budget` 在等于预算时输出「已到预算上限」；app/store/protocol 仍零余量，后续按需拆 |
 | D14 | M4 的每用户请求/分钟与并发连接两层没有具名用例；S1–S11 无覆盖门禁 | 已关闭 | 已补 `[M4]` 请求限流与真实 WS 并发上限用例；`invariant-coverage` 扩展到 S1–S11（30/30） |
 | D15 | 发布线倒挂：v1.16.0–v1.16.2 是 2026-11-09 的历史过渡版本，当前分支线曾为 1.15.16 | 已关闭 | 已改用 1.17.0 发布（tag `v1.17.0`），数值高于 1.16.2，`latest` 向前移动 |
 

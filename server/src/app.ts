@@ -13,6 +13,7 @@ import { Runtime } from './runtime.js'
 import { createSmtpMailer, smtpConfigured, type Mailer } from './mailer.js'
 import { accountDevicesPage, accountKeysPage, accountPage, adminPage, adminSettingsPage, forgotPage, homePage, loginPage, registerPage, setupPage } from './pages.js'
 import { buildIceServers, parseIceConfig } from './ice.js'
+import { Logger } from './logger.js'
 import { handleAdminApi } from './routes/admin.js'
 import { handleAuthFlows } from './routes/auth-flows.js'
 
@@ -149,6 +150,7 @@ export function createApp(settings: Settings, deps: { pool?: Pool; mailer?: Mail
   const pool = deps.pool ?? new Pool({ connectionString: settings.databaseUrl, max: 10 })
   let listening = false
   const store = new Store(pool)
+  const logger = new Logger('http', settings.logLevel)
   const server = createServer({ requestTimeout: 30_000, headersTimeout: 15_000 })
   const gateway = new Gateway(server, store as any, () => runtime.current.server.publicUrl || (settings.publicUrlExplicit ? settings.publicUrl.origin : ''), { turnEnabled: () => Boolean(runtime.current.ice.turnUrls.length), relayBytesPerSecond: settings.relayBytesPerSecond })
   const runtime = new Runtime(store, settings)
@@ -406,8 +408,7 @@ export function createApp(settings: Settings, deps: { pool?: Pool; mailer?: Mail
       let userId: string | undefined = verified?.user.id
       let keyId: string | undefined = verified?.keyId
       if (!userId) {
-        // SSO-only blocks the *web* password login; a device may still enrol with
-        // the account password, which is a device credential like any other.
+        // SSO-only closes web password; the account password remains a device credential.
         const user = await store.findUserByLogin(username).catch(() => undefined)
         if (user && !user.disabled && (await verifyPasswordAsync(deviceKey, user.password_hash))) {
           userId = user.id
@@ -433,8 +434,7 @@ export function createApp(settings: Settings, deps: { pool?: Pool; mailer?: Mail
       return json(res, 200, { account: user.username, isAdmin: user.role === 'admin', deviceUsername: user.device_username, user: { id: user.id, username: user.username, role: user.role }, oidc: Boolean(user.oidc_subject) })
     }
 
-    // Grouped route table: page/device/setup/login predicates stay here; the
-    // moved routes keep exact `path ===` guards in routes/*. First match wins.
+    // Grouped table: moved routes keep exact `path ===` guards in routes/*.
     const groupedRoutes: Array<{ match: (path: string) => boolean; handle: () => Promise<void> }> = [
       {
         match: p => p.startsWith('/api/v1/auth/register/') || p.startsWith('/api/v1/auth/password/')
@@ -597,7 +597,7 @@ export function createApp(settings: Settings, deps: { pool?: Pool; mailer?: Mail
       throw new ApiError('METHOD_NOT_FOUND', 404)
     }
 
-    console.warn(JSON.stringify({ level: 'warn', event: 'route_not_found', method, path: path.slice(0, 120) }))
+    logger.warn('route_not_found', { method, path: path.slice(0, 120) })
     throw new ApiError('METHOD_NOT_FOUND', 404)
   }
 
