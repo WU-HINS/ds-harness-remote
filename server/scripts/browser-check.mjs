@@ -376,6 +376,12 @@ const stored = await page.evaluate(() => localStorage.getItem('theme'))
 check('theme preference persisted', stored === theme, String(stored))
 await page.screenshot({ path: '/tmp/bv/shots/08-home-light.png', fullPage: true })
 
+// The error document must use the external stylesheet; an inline <style> would be
+// refused by style-src 'self' and show up as a console error below.
+await page.goto(BASE + '/definitely-not-a-page', { waitUntil: 'load' })
+const errorPage = await page.evaluate(() => ({ heading: document.querySelector('h1')?.textContent, sheets: document.styleSheets.length }))
+check('error page uses the external stylesheet', errorPage.heading === '页面不存在' && errorPage.sheets >= 1, JSON.stringify(errorPage))
+
 // 12. console cleanliness
 check('no console errors', consoleErrors.length === 0, consoleErrors.slice(0, 3).join(' | '))
 

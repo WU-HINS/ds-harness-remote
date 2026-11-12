@@ -9,7 +9,7 @@ export function init() {
     dshPost('/api/v1/auth/login', body).then((r) => {
       if (r.ok) { location.href = '/'; return }
       const box = $('login-error')
-      if (box) box.innerHTML = '<div class="alert err" style="margin-top:14px">' + dshFail(r.body, r.status) + '</div>'
+      if (box) box.innerHTML = '<div class="alert err u-mt14">' + dshFail(r.body, r.status) + '</div>'
     })
   }
 }

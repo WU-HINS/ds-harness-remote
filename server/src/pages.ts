@@ -17,9 +17,9 @@ const attr = esc
 
 const themeButton = '<button class="icon-btn" type="button" data-action="theme" title="切换主题" aria-label="切换主题">◐</button>'
 
-const bgStyle = (url?: string): string => (url && /^https:\/\/[A-Za-z0-9._~:/?#\[\]@!$&*+,=%-]+$/i.test(url))
-  ? ' style="--app-bg-image:url(&quot;' + esc(url) + '&quot;)" class="has-bg"'
-  : ''
+const bgUrl = (url?: string): string | undefined => (url && /^https:\/\/[A-Za-z0-9._~:/?#\[\]@!$&*+,=%-]+$/i.test(url)) ? url : undefined
+const bgStyle = (url?: string): string => bgUrl(url) ? ' class="has-bg"' : ''
+const bgImage = (url?: string): string => bgUrl(url) ? '<img class="app-bg" src="' + esc(url) + '" alt="" aria-hidden="true">' : ''
 
 const shell = (title: string, body: string, background?: string, surface: 'public' | 'console' = 'public', page = 'none'): string =>
   '<!doctype html><html lang="zh-CN" data-surface="' + surface + '"><head><meta charset="utf-8">' +
@@ -29,7 +29,7 @@ const shell = (title: string, body: string, background?: string, surface: 'publi
   '<script>' + THEME_BOOT + '</script>' +
   '<link rel="stylesheet" href="/assets/' + esc(webAssets?.css ?? '') + '">' +
   '<script src="/assets/' + esc(webAssets?.js ?? '') + '" defer></script>' +
-  '</head><body data-page="' + attr(page) + '"' + (surface === 'console' ? '' : bgStyle(background)) + '><div id="hint" class="hintbar" role="status" aria-live="polite"></div>' + body + (surface === 'console' ? cmdPalette + '</div></div>' : '') + '</body></html>'
+  '</head><body data-page="' + attr(page) + '"' + (surface === 'console' ? '' : bgStyle(background)) + '>' + (surface === 'console' ? '' : bgImage(background)) + '<div id="hint" class="hintbar" role="status" aria-live="polite"></div>' + body + (surface === 'console' ? cmdPalette + '</div></div>' : '') + '</body></html>'
 
 const ICONS: Record<string, string> = {
   home: '<path d="M3 10.7 12 3l9 7.7"/><path d="M5.5 9.5V20a1 1 0 0 0 1 1H10v-6h4v6h3.5a1 1 0 0 0 1-1V9.5"/>',
@@ -86,7 +86,7 @@ const consoleShell = (user: string, active: string, deviceUsername?: string, isA
   (deviceUsername ? '<span class="dev-name mono">' + esc(deviceUsername) + '</span>' : '') + '</span></div>' +
   themeButton +
   '<button class="icon-btn cmdk-btn" type="button" id="cmdk-open" aria-label="打开命令面板" aria-keyshortcuts="Meta+K Control+K" title="命令面板 ⌘K">' + icon('search') + '</button>' +
-  '<form method="post" action="/api/v1/auth/logout" style="margin:0"><button class="btn ghost sm" type="submit">退出</button></form></header>'
+  '<form class="u-m0" method="post" action="/api/v1/auth/logout"><button class="btn ghost sm" type="submit">退出</button></form></header>'
 
 const card = (title: string, body: string, extra = ''): string =>
   '<section class="card"><h2>' + title + (extra ? '<span class="muted small">' + extra + '</span>' : '') + '</h2>' + body + '</section>'
@@ -98,115 +98,115 @@ const table = (headers: string[], bodyId: string, empty: string, label = '数据
   Array.from({ length: 3 }, () => '<tr>' + headers.map(() => '<td><span class="sk"></span></td>').join('') + '</tr>').join('') +
   '</tbody></table><noscript><p class="muted small">' + empty + '</p></noscript></div>'
 
-const keyDialog = '<dialog id="keydlg" aria-labelledby="keydlgtitle"><h2 id="keydlgtitle" style="border:0;padding:0;margin-bottom:10px">设备密钥</h2>' +
-  '<p class="muted small" style="margin:0 0 10px">只显示这一次，请立即保存。</p>' +
+const keyDialog = '<dialog id="keydlg" aria-labelledby="keydlgtitle"><h2 class="u-dialog-title2" id="keydlgtitle">设备密钥</h2>' +
+  '<p class="muted small u-mb10">只显示这一次，请立即保存。</p>' +
   '<div class="code" id="keyvalue"></div>' +
-  '<div class="row" style="margin-top:14px"><button class="btn" type="button" id="keycopy">复制</button>' +
+  '<div class="row u-mt14"><button class="btn" type="button" id="keycopy">复制</button>' +
   '<button class="btn ghost" type="button" id="keydone">我已保存</button></div></dialog>'
 
 export function setupPage(setupKey: string, suggestedOrigin = '', error?: string): string {
   const key = setupKey.replace(/[^A-Za-z0-9_-]/g, '')
   const origin = suggestedOrigin.startsWith('https://') ? suggestedOrigin : ''
   return shell('初始化', '<main class="hero" id="main"><div class="auth">' +
-    '<section class="pitch"><div class="brand" style="margin-bottom:18px"><span class="dot"></span>DSH Remote</div>' +
+    '<section class="pitch"><div class="brand u-mb18"><span class="dot"></span>DSH Remote</div>' +
     '<p class="lead">先把这台服务器<br>认领下来</p>' +
     '<p class="muted">初始化只需要一次：一个管理员邮箱、一个一次性密钥。完成后这台机器就归你管了。</p></section>' +
-    '<section class="panel"><h1 style="font-size:22px;margin-bottom:6px">初始化服务器</h1>' +
-    '<p class="muted small" style="margin:0 0 20px">一次性密钥见服务端启动日志，也可由 DSH_SETUP_KEY 指定。</p>' +
+    '<section class="panel"><h1 class="u-title22">初始化服务器</h1>' +
+    '<p class="muted small u-mb20">一次性密钥见服务端启动日志，也可由 DSH_SETUP_KEY 指定。</p>' +
     '<form id="setup-form" method="post" action="/api/v1/setup" class="stack">' +
     '<div><label class="label" for="setup-key">初始化密钥</label><input class="input mono" id="setup-key" name="key" value="' + esc(key) + '" required autocomplete="off"></div>' +
     '<div><label class="label" for="setup-url">公网地址</label><input class="input" id="setup-url" name="publicUrl" type="url" placeholder="https://remote.example.com" value="' + esc(origin) + '"><span class="small muted">仅 https，可稍后在后台修改</span></div>' +
     '<div><label class="label" for="setup-user">管理员邮箱</label><input class="input" id="setup-user" name="username" type="email" required placeholder="you@example.com" autocomplete="username"><span class="small muted">必须使用邮箱，作为登录账号</span></div>' +
     '<div><label class="label" for="setup-pass">密码</label><input class="input" id="setup-pass" name="password" type="password" required minlength="12" placeholder="至少 12 位" autocomplete="new-password"></div>' +
     '<button class="btn block" type="submit">创建管理员</button></form>' +
-    '<div id="setup-error" role="alert">' + (error ? '<div class="alert err" style="margin-top:14px">' + esc(error) + '</div>' : '') + '</div></section></div></main>', undefined, 'public', 'setup')
+    '<div id="setup-error" role="alert">' + (error ? '<div class="alert err u-mt14">' + esc(error) + '</div>' : '') + '</div></section></div></main>', undefined, 'public', 'setup')
 }
 
 export function loginPage(oidcEnabled: boolean, error?: string, background?: string): string {
   return shell('登录', '<main class="hero" id="main"><div class="auth">' +
-    '<section class="pitch" aria-hidden="true"><div class="brand" style="margin-bottom:18px"><span class="dot"></span>DSH Remote</div>' +
+    '<section class="pitch" aria-hidden="true"><div class="brand u-mb18"><span class="dot"></span>DSH Remote</div>' +
     '<p class="lead">你的 Harness，<br>在哪儿都能用</p>' +
     '<p class="muted">登录后即可管理账号、设备与在线主机。所有业务流量端到端加密，服务器只转发密文。</p></section>' +
-    '<section class="panel"><div class="row" style="justify-content:space-between"><h1 style="font-size:clamp(20px,4.6vw,22px)">登录</h1>' + themeButton + '</div>' +
-    '<form id="login-form" method="post" action="/api/v1/auth/login" class="stack" style="margin-top:18px">' +
+    '<section class="panel"><div class="row u-between"><h1 class="u-fs-clamp22">登录</h1>' + themeButton + '</div>' +
+    '<form id="login-form" method="post" action="/api/v1/auth/login" class="stack u-mt18">' +
     '<div><label class="label" for="login-user">邮箱</label><input class="input" id="login-user" name="username" type="email" autocomplete="username" required placeholder="you@example.com"></div>' +
     '<div><label class="label" for="login-pass">密码</label><input class="input" id="login-pass" name="password" type="password" autocomplete="current-password" required placeholder="••••••••"></div>' +
     '<button class="btn block" type="submit">登录</button></form>' +
     (oidcEnabled ? '<div class="divider"></div><a class="btn ghost block" href="/api/v1/auth/oidc/start">使用 SSO 登录</a>' : '') +
-    '<p class="small muted" style="margin:16px 0 0"><a href="/register">注册</a> · <a href="/forgot">忘记密码</a></p>' +
-    '<div id="login-error" role="alert">' + (error ? '<div class="alert err" style="margin-top:14px">' + esc(error) + '</div>' : '') + '</div></section></div></main>', background, 'public', 'login')
+    '<p class="small muted u-m16-0-0"><a href="/register">注册</a> · <a href="/forgot">忘记密码</a></p>' +
+    '<div id="login-error" role="alert">' + (error ? '<div class="alert err u-mt14">' + esc(error) + '</div>' : '') + '</div></section></div></main>', background, 'public', 'login')
 }
 
 export function registerPage(onlySso: boolean, background?: string, error?: string): string {
   if (onlySso) {
-    return shell('注册', '<main class="hero" id="main"><section class="panel" style="max-width:460px;text-align:center">' +
-      '<h1 style="font-size:22px">注册已关闭</h1><p class="muted">本站已启用仅 SSO，账号由身份提供方创建。</p>' +
+    return shell('注册', '<main class="hero" id="main"><section class="panel u-center460">' +
+      '<h1 class="u-fs22">注册已关闭</h1><p class="muted">本站已启用仅 SSO，账号由身份提供方创建。</p>' +
       '<a class="btn ghost" href="/login">返回登录</a></section></main>', background, 'public', 'register')
   }
-  return shell('注册', '<main class="hero" id="main"><section class="panel" style="max-width:520px">' +
-    '<h1 style="font-size:22px;margin-bottom:6px">创建账户</h1><p class="muted small" style="margin:0 0 18px">需要邮箱验证码。</p>' +
+  return shell('注册', '<main class="hero" id="main"><section class="panel u-max520">' +
+    '<h1 class="u-title22">创建账户</h1><p class="muted small u-mb18">需要邮箱验证码。</p>' +
     '<form id="reg" method="post" action="/api/v1/auth/register/complete" class="stack">' +
     '<div><label class="label" for="reg-email">邮箱</label><input class="input" id="reg-email" name="email" type="email" required placeholder="you@example.com" autocomplete="email"></div>' +
-    '<div class="row" style="align-items:flex-end"><div style="flex:1"><label class="label" for="reg-code">验证码</label><input class="input" id="reg-code" name="code" inputmode="numeric" maxlength="6" required placeholder="6 位数字"></div><button class="btn ghost" type="button" id="reg-send">发送验证码</button></div>' +
+    '<div class="row u-items-end"><div class="u-flex1"><label class="label" for="reg-code">验证码</label><input class="input" id="reg-code" name="code" inputmode="numeric" maxlength="6" required placeholder="6 位数字"></div><button class="btn ghost" type="button" id="reg-send">发送验证码</button></div>' +
     '<div><label class="label" for="reg-pass">密码</label><input class="input" id="reg-pass" name="password" type="password" required minlength="12" placeholder="至少 12 位" autocomplete="new-password"></div>' +
     '<button class="btn block" type="submit">创建账户</button></form>' +
-    '<p class="small muted" style="margin-top:16px"><a href="/login">返回登录</a></p>' +
+    '<p class="small muted u-mt16"><a href="/login">返回登录</a></p>' +
     '<div id="reg-out" role="status" aria-live="polite"></div></section></main>' +
-    '<noscript><p class="alert" style="position:fixed;bottom:0;left:0;right:0">脚本已禁用：请先在有脚本的浏览器完成注册。</p></noscript>' +
+    '<noscript><p class="alert u-fixed-bottom">脚本已禁用：请先在有脚本的浏览器完成注册。</p></noscript>' +
     '', background, 'public', 'register')
 }
 
 export function forgotPage(onlySso: boolean, background?: string, error?: string): string {
   if (onlySso) {
-    return shell('找回密码', '<main class="hero" id="main"><section class="panel" style="max-width:460px;text-align:center">' +
-      '<h1 style="font-size:22px">找回密码已禁用</h1><p class="muted">仅 SSO 模式下请通过身份提供方登录。</p>' +
+    return shell('找回密码', '<main class="hero" id="main"><section class="panel u-center460">' +
+      '<h1 class="u-fs22">找回密码已禁用</h1><p class="muted">仅 SSO 模式下请通过身份提供方登录。</p>' +
       '<a class="btn ghost" href="/login">返回登录</a></section></main>', background, 'public', 'forgot')
   }
-  return shell('找回密码', '<main class="hero" id="main"><section class="panel" style="max-width:520px">' +
-    '<h1 style="font-size:22px;margin-bottom:6px">重置密码</h1><p class="muted small" style="margin:0 0 18px">验证码会发送到你的邮箱。</p>' +
+  return shell('找回密码', '<main class="hero" id="main"><section class="panel u-max520">' +
+    '<h1 class="u-title22">重置密码</h1><p class="muted small u-mb18">验证码会发送到你的邮箱。</p>' +
     '<form id="fg" method="post" action="/api/v1/auth/password/reset/complete" class="stack">' +
     '<div><label class="label" for="fg-email">邮箱</label><input class="input" id="fg-email" name="email" type="email" required placeholder="you@example.com" autocomplete="email"></div>' +
-    '<div class="row" style="align-items:flex-end"><div style="flex:1"><label class="label" for="fg-code">验证码</label><input class="input" id="fg-code" name="code" inputmode="numeric" maxlength="6" required></div><button class="btn ghost" type="button" id="fg-send">发送验证码</button></div>' +
+    '<div class="row u-items-end"><div class="u-flex1"><label class="label" for="fg-code">验证码</label><input class="input" id="fg-code" name="code" inputmode="numeric" maxlength="6" required></div><button class="btn ghost" type="button" id="fg-send">发送验证码</button></div>' +
     '<div><label class="label" for="fg-pass">新密码</label><input class="input" id="fg-pass" name="password" type="password" required minlength="12" placeholder="至少 12 位" autocomplete="new-password"></div>' +
     '<button class="btn block" type="submit">重置密码</button></form>' +
-    '<p class="small muted" style="margin-top:16px"><a href="/login">返回登录</a></p></section></main>' +
+    '<p class="small muted u-mt16"><a href="/login">返回登录</a></p></section></main>' +
     '', background, 'public', 'forgot')
 }
 
 export function bindPage(email: string, onlySso: boolean, background?: string): string {
-  return shell('绑定账户', '<main class="hero" id="main"><section class="panel" style="max-width:520px">' +
-    '<h1 style="font-size:22px;margin-bottom:6px">绑定已有账户</h1>' +
-    '<p class="muted small" style="margin:0 0 18px">邮箱 ' + esc(email) + ' 已注册但尚未绑定此 SSO 身份。</p>' +
+  return shell('绑定账户', '<main class="hero" id="main"><section class="panel u-max520">' +
+    '<h1 class="u-title22">绑定已有账户</h1>' +
+    '<p class="muted small u-mb18">邮箱 ' + esc(email) + ' 已注册但尚未绑定此 SSO 身份。</p>' +
     '<div class="stack">' +
     '<div><label class="label" for="bind-mode">验证方式</label><select class="input" id="bind-mode">' +
     (onlySso ? '' : '<option value="password">账户密码</option>') + '<option value="code">邮箱验证码</option></select></div>' +
-    '<div id="bind-pw"' + (onlySso ? ' style="display:none"' : '') + '><label class="label" for="bind-pass">密码</label><input class="input" id="bind-pass" type="password"></div>' +
-    '<div id="bind-cd" style="display:none"><div class="row" style="align-items:flex-end"><div style="flex:1"><label class="label" for="bind-code">验证码</label><input class="input" id="bind-code" inputmode="numeric" maxlength="6"></div><button class="btn ghost" type="button" id="bind-send">发送验证码</button></div></div>' +
+    '<div class="' + (onlySso ? 'u-hidden' : '') + '" id="bind-pw"><label class="label" for="bind-pass">密码</label><input class="input" id="bind-pass" type="password"></div>' +
+    '<div class="u-hidden" id="bind-cd"><div class="row u-items-end"><div class="u-flex1"><label class="label" for="bind-code">验证码</label><input class="input" id="bind-code" inputmode="numeric" maxlength="6"></div><button class="btn ghost" type="button" id="bind-send">发送验证码</button></div></div>' +
     '<button class="btn block" type="button" id="bind-submit">绑定并登录</button></div></section></main>' +
     '', background, 'public', 'bind')
 }
 
 export function homePage(username: string, role: string, deviceUsername = '', serverUrl = ''): string {
   const row = (label: string, value: string, id: string, copyable = true): string =>
-    '<div class="connect-row"><div><div class="label" style="margin:0 0 2px">' + label + '</div>' +
+    '<div class="connect-row"><div><div class="label u-mb2">' + label + '</div>' +
     '<div class="mono small" id="' + id + '">' + esc(value || '—') + '</div></div>' +
     (copyable && value ? '<button class="btn ghost sm" type="button" data-copy="' + esc(value) + '">复制</button>' : '') + '</div>'
   return shell('概览', consoleShell(username, 'home', deviceUsername, role === 'admin') + '<main class="wrap" id="main">' +
     '<div class="grid-phi"><div>' +
-    '<section class="card"><h1 style="font-size:clamp(20px,4.6vw,26px)">接入你的桌面端</h1>' +
-    '<p class="muted" style="margin:10px 0 18px">在 DSH 桌面端的「设置 → 远程」里填下面三项，桌面端就会出现在设备列表里，手机和平板可以随时连回来。</p>' +
+    '<section class="card"><h1 class="u-fs-clamp26">接入你的桌面端</h1>' +
+    '<p class="muted u-mt10-mb18">在 DSH 桌面端的「设置 → 远程」里填下面三项，桌面端就会出现在设备列表里，手机和平板可以随时连回来。</p>' +
     '<ol class="steps">' +
     '<li><div class="step-body">' + row('服务器地址', serverUrl, 'connect-url') +
-    '<p class="small muted" style="margin:6px 0 0">就是你现在打开的地址；换域名后记得在设置里更新。</p></div></li>' +
+    '<p class="small muted u-m6-0-0">就是你现在打开的地址；换域名后记得在设置里更新。</p></div></li>' +
     '<li><div class="step-body">' + row('设备用户名', deviceUsername, 'connect-user') +
-    '<p class="small muted" style="margin:6px 0 0">与登录邮箱不同：设备用「用户名 + 密钥」登录，网页密码改了不影响已接入的桌面端。</p></div></li>' +
-    '<li><div class="step-body"><div class="connect-row"><div><div class="label" style="margin:0 0 2px">设备密钥</div>' +
+    '<p class="small muted u-m6-0-0">与登录邮箱不同：设备用「用户名 + 密钥」登录，网页密码改了不影响已接入的桌面端。</p></div></li>' +
+    '<li><div class="step-body"><div class="connect-row"><div><div class="label u-mb2">设备密钥</div>' +
     '<div class="mono small" id="connect-key">还没有生成</div></div>' +
-    '<div class="row" style="gap:8px"><button class="btn sm" type="button" id="gen-key">生成并复制</button>' +
+    '<div class="row u-gap8"><button class="btn sm" type="button" id="gen-key">生成并复制</button>' +
     '<a class="btn ghost sm" href="/account/keys">管理密钥</a></div></div>' +
-    '<p class="small muted" style="margin:6px 0 0">密钥只显示这一次，请立刻粘贴到桌面端；丢了就吊销重发。</p></div></li>' +
+    '<p class="small muted u-m6-0-0">密钥只显示这一次，请立刻粘贴到桌面端；丢了就吊销重发。</p></div></li>' +
     '</ol></section>' +
-    '<div class="stats" style="margin-top:var(--s3)">' +
+    '<div class="stats u-mt-s3">' +
     '<div class="stat"><div class="muted small">当前角色</div><div class="n">' + (role === 'admin' ? '管理员' : '普通用户') + '</div></div>' +
     '<div class="stat"><div class="muted small">已登记设备</div><div class="n" id="deviceCount">—</div></div>' +
     '<div class="stat"><div class="muted small">服务状态</div><div class="n" id="health">—</div></div></div>' +
@@ -215,7 +215,7 @@ export function homePage(username: string, role: string, deviceUsername = '', se
       '<a class="btn ghost block" href="/account">账户与安全</a>' +
       (role === 'admin' ? '<a class="btn ghost block" href="/admin">用户与设备管理</a>' : '') +
       '</div>') +
-      card('需要帮助', '<p class="small muted" style="margin:0">设备连不上时，先确认服务器地址能打开、密钥未被吊销；管理员可以在「用户与设备」里看到每台设备的在线状态与版本。</p>') +
+      card('需要帮助', '<p class="small muted u-m0">设备连不上时，先确认服务器地址能打开、密钥未被吊销；管理员可以在「用户与设备」里看到每台设备的在线状态与版本。</p>') +
       '</aside></div></main>', undefined, 'console', 'home')
 }
 
@@ -227,7 +227,7 @@ const accountTabs = (active: 'profile' | 'devices' | 'keys'): string =>
 
 export function accountPage(username: string, email: string, oidcBound: boolean, onlySso: boolean, background?: string, deviceUsername = '', isAdmin = false, oidcError = false): string {
   const passwordCard = onlySso
-    ? card('修改密码', '<p class="muted small" style="margin:0">仅 SSO 模式已启用，密码修改不可用。</p>')
+    ? card('修改密码', '<p class="muted small u-m0">仅 SSO 模式已启用，密码修改不可用。</p>')
     : card('修改密码', '<div class="stack">' +
         '<div><label class="label" for="cur-pass">当前密码</label><input class="input" id="cur-pass" type="password" autocomplete="current-password"></div>' +
         '<div><label class="label" for="new-pass">新密码</label><input class="input" id="new-pass" type="password" minlength="12" placeholder="至少 12 位" autocomplete="new-password"></div>' +
@@ -245,9 +245,9 @@ export function accountPage(username: string, email: string, oidcBound: boolean,
       '<div><label class="label" for="old-code">原邮箱验证码</label><input class="input" id="old-code" maxlength="6" inputmode="numeric"></div></div>' +
       '<button class="btn" type="button" id="change-email">确认换绑</button></div>') +
     passwordCard + '</div><aside>' +
-    card('安全提示', '<p class="muted small" style="margin:0">设备用「设备用户名 + 设备密钥」登录，与网页密码相互独立。吊销密钥会让对应设备立即下线。</p>') +
-    card('单点登录', (oidcError ? '<div class="alert err" role="alert" style="margin:0 0 12px">单点登录未启用或配置有误，请联系管理员。</div>' : '') +
-      '<p class="muted small" style="margin:0 0 12px">' + (oidcBound ? '已绑定 OIDC 身份。' : '尚未绑定 OIDC 身份。') + '</p>' +
+    card('安全提示', '<p class="muted small u-m0">设备用「设备用户名 + 设备密钥」登录，与网页密码相互独立。吊销密钥会让对应设备立即下线。</p>') +
+    card('单点登录', (oidcError ? '<div class="alert err u-mb12" role="alert">单点登录未启用或配置有误，请联系管理员。</div>' : '') +
+      '<p class="muted small u-mb12">' + (oidcBound ? '已绑定 OIDC 身份。' : '尚未绑定 OIDC 身份。') + '</p>' +
       '<div class="stack"><a class="btn ghost block" href="/api/v1/auth/oidc/start" data-confirm="绑定后可以直接用该 SSO 身份登录，继续？">绑定 / 重新绑定</a>' +
       (onlySso || !oidcBound ? '' : '<button class="btn danger block" type="button" id="unbind">解绑</button>') + '</div>') +
     '</aside></div></main>' ,
@@ -261,7 +261,7 @@ export function accountDevicesPage(username: string, background?: string, device
       '<div class="chips" role="group" aria-label="按角色筛选"><button class="chip" data-role="all" aria-pressed="true">全部</button><button class="chip" data-role="host" aria-pressed="false">主机</button><button class="chip" data-role="client" aria-pressed="false">客户端</button></div>' +
       '<div class="chips" role="group" aria-label="按状态筛选"><button class="chip" data-online="all" aria-pressed="true">全部状态</button><button class="chip" data-online="online" aria-pressed="false">在线</button><button class="chip" data-online="offline" aria-pressed="false">离线</button></div></div>' +
       '<div class="table-scroll" tabindex="0" role="region" aria-label="设备列表"><table class="table"><thead><tr><th scope="col">设备</th><th scope="col">角色</th><th scope="col">系统</th><th scope="col">插件版本</th><th scope="col">DSH 版本</th><th scope="col">最近在线</th><th scope="col">操作</th></tr></thead><tbody id="devices" aria-live="polite"><tr><td colspan="7"><span class="sk"></span></td></tr><tr><td colspan="7"><span class="sk"></span></td></tr><tr><td colspan="7"><span class="sk"></span></td></tr></tbody></table></div>' +
-      '<p class="small muted" style="margin:10px 0 0">设备列表按账号隔离；在「设备密钥」页吊销密钥会让对应设备立即下线。</p>', '仅你自己可见') +
+      '<p class="small muted u-mt10">设备列表按账号隔离；在「设备密钥」页吊销密钥会让对应设备立即下线。</p>', '仅你自己可见') +
     '</main>' ,
      background, 'console', 'devices')
 }
@@ -271,9 +271,9 @@ export function accountKeysPage(username: string, background?: string, deviceUse
     card('设备密钥', '<div class="toolbar"><input class="input" id="q" type="search" placeholder="搜索标签" aria-label="搜索密钥">' +
       '<div class="chips" role="group" aria-label="按状态筛选"><button class="chip" data-state="all" aria-pressed="true">全部</button><button class="chip" data-state="active" aria-pressed="false">正常</button><button class="chip" data-state="revoked" aria-pressed="false">已吊销</button></div></div>' +
       '<div class="table-scroll sticky-actions" tabindex="0" role="region" aria-label="设备密钥列表"><table class="table"><thead><tr><th scope="col">标签</th><th scope="col">设备数</th><th scope="col">状态</th><th scope="col">密钥</th><th scope="col">创建时间</th><th scope="col">操作</th></tr></thead><tbody id="keys" aria-live="polite"><tr><td colspan="6"><span class="sk"></span></td></tr><tr><td colspan="6"><span class="sk"></span></td></tr><tr><td colspan="6"><span class="sk"></span></td></tr></tbody></table></div>' +
-      '<div class="row" style="margin-top:12px"><div style="flex:1;min-width:200px"><label class="label" for="key-label">新密钥标签</label><input class="input" id="key-label" placeholder="例如 客厅 iPad" maxlength="64"></div>' +
+      '<div class="row u-mt12"><div class="u-flex1-min200"><label class="label" for="key-label">新密钥标签</label><input class="input" id="key-label" placeholder="例如 客厅 iPad" maxlength="64"></div>' +
       '<button class="btn" type="button" id="create-key">生成密钥</button></div>' +
-      '<p class="small muted" style="margin:10px 0 0">密钥随时可以查看和复制；吊销后用它接入的设备会立即掉线，且同一设备无法重新接入。</p>', '仅你自己可见') +
+      '<p class="small muted u-mt10">密钥随时可以查看和复制；吊销后用它接入的设备会立即掉线，且同一设备无法重新接入。</p>', '仅你自己可见') +
     '</main>' ,
      background, 'console', 'keys')
 }
@@ -299,15 +299,15 @@ export function adminPage(username: string, background?: string, deviceUsername 
       '<div class="divider"></div><div class="grid-2">' +
       '<div><label class="label" for="nu">新建邮箱</label><input class="input" id="nu" type="email" placeholder="user@example.com" autocomplete="off"></div>' +
       '<div><label class="label" for="np">初始密码（可留空）</label><input class="input" id="np" type="password" autocomplete="new-password"></div></div>' +
-      '<div class="row" style="margin-top:12px"><div style="min-width:140px"><label class="label" for="nr">角色</label><select class="input" id="nr"><option value="user">user</option><option value="admin">admin</option></select></div>' +
+      '<div class="row u-mt12"><div class="u-min140"><label class="label" for="nr">角色</label><select class="input" id="nr"><option value="user">user</option><option value="admin">admin</option></select></div>' +
       '<button class="btn" type="button" id="create-user">创建用户</button></div>', '共 <span id="userCount">0</span> 人') +
     card('设备', table(['用户', '设备', '角色', '状态', '操作'], 'devices', '还没有设备接入', '设备列表')) +
     card('最近审计', table(['时间', '操作者', '动作'], 'audit', '暂无审计记录', '审计日志')) +
     '</div><aside>' +
-    card('权限边界', '<p class="muted small" style="margin:0 0 10px">管理员只能<b>创建、禁用、删除</b>普通用户。管理员账号本身不可禁用或删除。</p>' +
-      '<p class="muted small" style="margin:0">设备密钥、设备列表与密码均由用户在自己的「我的账户」里管理，管理员无法代为操作或查看。</p>' +
-      '<a class="btn ghost block" style="margin-top:12px" href="/admin/settings">前往设置</a>') +
-    card('安全提示', '<p class="muted small" style="margin:0">删除用户会同时吊销其全部设备与会话，且不可恢复。</p>') +
+    card('权限边界', '<p class="muted small u-mb10">管理员只能<b>创建、禁用、删除</b>普通用户。管理员账号本身不可禁用或删除。</p>' +
+      '<p class="muted small u-m0">设备密钥、设备列表与密码均由用户在自己的「我的账户」里管理，管理员无法代为操作或查看。</p>' +
+      '<a class="btn ghost block u-mt12" href="/admin/settings">前往设置</a>') +
+    card('安全提示', '<p class="muted small u-m0">删除用户会同时吊销其全部设备与会话，且不可恢复。</p>') +
     '</aside></div></main>' ,
      background, 'console', 'admin')
 }
@@ -323,15 +323,15 @@ export function adminSettingsPage(username: string, background?: string, deviceU
     '<div><button class="btn" type="button" id="save-ui">保存外观</button></div></div></section>' +
     '<section class="card" id="smtp"><h2>SMTP</h2><div class="stack">' +
     '<div class="grid-2"><div><label class="label" for="smtp-host">Host</label><input class="input" id="smtp-host"></div><div><label class="label" for="smtp-port">Port</label><input class="input" id="smtp-port" type="number" value="587"></div></div>' +
-    '<label class="row small" for="smtp-secure"><input type="checkbox" id="smtp-secure" style="width:auto"> 直接 TLS（465）</label>' +
+    '<label class="row small" for="smtp-secure"><input class="u-w-auto" type="checkbox" id="smtp-secure"> 直接 TLS（465）</label>' +
     '<div class="grid-2"><div><label class="label" for="smtp-user">用户名</label><input class="input" id="smtp-user"></div><div><label class="label" for="smtp-pass">密码（留空不修改）</label><input class="input" id="smtp-pass" type="password" autocomplete="new-password"></div></div>' +
     '<div><label class="label" for="smtp-from">发件人</label><input class="input" id="smtp-from"></div>' +
     '<div class="row"><button class="btn" type="button" id="save-smtp">保存 SMTP</button><button class="btn ghost" type="button" id="test-smtp">发送测试</button>' +
-    '<input class="input" id="smtp-test-to" aria-label="测试收件人" placeholder="test@example.com" style="max-width:220px"></div></div></section>' +
+    '<input class="input u-max220" id="smtp-test-to" aria-label="测试收件人" placeholder="test@example.com"></div></div></section>' +
     '<section class="card" id="oidc"><h2>OIDC</h2><div class="stack">' +
-    '<label class="row small" for="oidc-enabled"><input type="checkbox" id="oidc-enabled" style="width:auto"> 启用 OIDC</label>' +
-    '<label class="row small" for="only-sso"><input type="checkbox" id="only-sso" style="width:auto"> 仅允许 SSO</label>' +
-    '<label class="row small" for="bind-require"><input type="checkbox" id="bind-require" style="width:auto"> 绑定已有账户需二次校验</label>' +
+    '<label class="row small" for="oidc-enabled"><input class="u-w-auto" type="checkbox" id="oidc-enabled"> 启用 OIDC</label>' +
+    '<label class="row small" for="only-sso"><input class="u-w-auto" type="checkbox" id="only-sso"> 仅允许 SSO</label>' +
+    '<label class="row small" for="bind-require"><input class="u-w-auto" type="checkbox" id="bind-require"> 绑定已有账户需二次校验</label>' +
     '<div><label class="label" for="issuer">Issuer</label><input class="input" id="issuer" placeholder="https://idp.example.com"></div>' +
     '<div><label class="label" for="client-id">Client ID</label><input class="input" id="client-id"></div>' +
     '<div><label class="label" for="client-secret">Client Secret（留空不修改）</label><input class="input" id="client-secret" type="password" autocomplete="new-password"></div>' +
@@ -348,7 +348,7 @@ export function adminSettingsPage(username: string, background?: string, deviceU
     '<div class="grid-2"><div><label class="label" for="turn-user">TURN 用户名</label><input class="input" id="turn-user"></div><div><label class="label" for="turn-pass">TURN 密码</label><input class="input" id="turn-pass" type="password" autocomplete="new-password"></div></div>' +
     '<div><button class="btn" type="button" id="save-limits">保存限额</button></div></div></section>' +
     '</div><aside>' + anchorsNav() +
-    card('生效方式', '<p class="muted small" style="margin:0">所有设置写入数据库并立即生效；端口、数据库与初始化密钥仍在环境变量中。</p>') +
+    card('生效方式', '<p class="muted small u-m0">所有设置写入数据库并立即生效；端口、数据库与初始化密钥仍在环境变量中。</p>') +
     '</aside></div></main>' ,
      background, 'console', 'admin-settings')
 }

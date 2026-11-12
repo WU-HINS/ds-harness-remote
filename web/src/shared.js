@@ -74,9 +74,9 @@ export function dshConfirm(message, options = {}) {
     const titleId = 'confirm-title-' + Math.random().toString(36).slice(2, 8)
     dlg.setAttribute('aria-labelledby', titleId)
     const title = options.title || '确认操作'
-    dlg.innerHTML = '<h2 id="' + titleId + '" style="border:0;padding:0;margin:0 0 10px">' + dshEsc(title) + '</h2>' +
-      '<p class="muted small" style="margin:0 0 16px">' + dshEsc(message) + '</p>' +
-      '<div class="row" style="justify-content:flex-end"><button class="btn ghost" type="button" data-r="0">取消</button>' +
+    dlg.innerHTML = '<h2 class="u-dialog-title" id="' + titleId + '">' + dshEsc(title) + '</h2>' +
+      '<p class="muted small u-mb16">' + dshEsc(message) + '</p>' +
+      '<div class="row u-end"><button class="btn ghost" type="button" data-r="0">取消</button>' +
       '<button class="btn ' + (options.danger === false ? '' : 'danger') + '" type="button" data-r="1">' + dshEsc(options.ok || '确认') + '</button></div>'
     document.body.appendChild(dlg)
     const done = (value) => { dlg.close(); dlg.remove(); resolve(value) }
@@ -173,7 +173,7 @@ export function initPalette() {
   const render = () => {
     list.innerHTML = filtered.length
       ? filtered.map((it, i) => '<button type="button" class="cmdk-item' + (i === idx ? ' active' : '') + '" role="option" aria-selected="' + (i === idx) + '" data-i="' + i + '"><span>' + dshEsc(it.t) + '</span><span class="muted small">' + dshEsc(it.h || '') + '</span></button>').join('')
-      : '<div class="muted small" style="padding:10px">没有匹配项</div>'
+      : '<div class="muted small u-p10">没有匹配项</div>'
   }
   const close = () => { if (dlg.open) dlg.close() }
   const run = (it) => {

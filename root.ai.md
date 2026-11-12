@@ -4,7 +4,7 @@
 
 > **位置**：项目根 `/data/dsh/workspace/ds-harness-remote/root.ai.md`。本文件管辖整个工作区，而不只是 `repo/`。
 > **权威**：本文件是唯一可编辑副本。仓库内的 `repo/root.ai.md` 是由本文件生成的镜像（随 git 版本化、供 CI 读取），禁止手改；改完这里运行 `pnpm guard --sync` 重建，漂移会让 `pnpm guard` 变红。
-> **生效**：2026-11-12 · 基线：服务端/前端 1.17.0，协议包 0.5.21 · 上游协议：liguobao/ds-harness-remote
+> **生效**：2026-11-12 · 基线：服务端/前端 1.18.0，协议包 0.5.21 · 上游协议：liguobao/ds-harness-remote
 
 ## 工作区布局（先认清哪里是「项目」）
 
@@ -86,7 +86,7 @@
 | 仓库形态 | pnpm workspace：`server`、`web`、`packages/*` | `pnpm-workspace.yaml` |
 | 上游 | liguobao/ds-harness-remote（完整协议）；本仓库是其服务端最小面独立实现 | 本文 §0.1 / §0.2 |
 | 本仓库独有能力 | C1 OIDC、C2 多用户、C3 单用户多密钥 | 本文 §6.1 |
-| 发布版本 | 1.17.0（`package.json`、`server/package.json`、`web/package.json` 三处同步） | `node scripts/guard/index.mjs --only version-lockstep` |
+| 发布版本 | 1.18.0（`package.json`、`server/package.json`、`web/package.json` 三处同步） | `node scripts/guard/index.mjs --only version-lockstep` |
 | 协议包版本 | 0.5.21，独立语义化，服务端以 `workspace:*` 依赖 | `packages/protocol/package.json` |
 | Node | `engines: >=22`；CI 用 24.9.0；镜像用 `node:22-bookworm-slim` | 三处都不得低于 engines |
 | 包管理器 | pnpm 9.15.4（`packageManager` 字段与 CI 一致） | `package.json` |
@@ -213,7 +213,7 @@
 | S5 | 会话 Cookie：`HttpOnly; SameSite=Lax; Secure（https 时）` | `server/src/app.ts` 的 `cookie()` |
 | S6 | 状态变更请求校验 `Origin` / `Sec-Fetch-Site`；OIDC 回调是唯一豁免，靠 state cookie | `docs/security.md` |
 | S7 | 匿名端点必须限流；限流桶在进程内，因此**单写者**是安全前提，不是性能选择 | `server/src/ratelimit.ts` |
-| S8 | `CSP: script-src 'self' 'sha256-…'`，禁止内联脚本；`style-src 'unsafe-inline'` 是已登记的例外 | `server/src/app.ts` |
+| S8 | `CSP: default-src 'self'; style-src 'self'; script-src 'self' 'sha256-…'`，禁止内联脚本与内联样式 | `server/src/app.ts` |
 | S9 | setup key 一次性；管理员创建后初始化端点永久关闭 | `server/src/app.ts` |
 | S10 | `SSO-only` 不得把所有人锁死：设备凭据与 `DSH_BREAK_GLASS_PASSWORD` 必须保留逃生路径 | `docs/auth.md` |
 | S11 | 日志脱敏是双保险：按 key 命中 + 按值模式命中，任何新增敏感字段必须落到 `SENSITIVE_KEYS` 或等价规则 | `server/src/logger.ts` |
@@ -385,7 +385,7 @@
 | D3 | `server/src/gateway.ts` 连接状态机与链路转发曾在同一类 | 已关闭 | 已抽出 `gateway-links.ts`（connect/signal/handshake/transport/relay counter），`gateway.ts` 556→417；`gateway-link-flow.mjs` 11 条真实 WS 用例 |
 | D4 | `packages/protocol/src/index.ts` 1473 行 | 已关闭 | 已拆出 `frames.ts`（帧/载荷类型）、`acp.ts`（ACP 常量与类型）、`secure-message.ts`（分片编解码）；index 1473→1118，导出集合不变 |
 | D5 | `app.ts` 里曾有 1 处 `console.warn`（route_not_found 兜底） | 已关闭 | 改为 `logger.warn('route_not_found', …)`；`consoleExemptions` 清空 |
-| D6 | CSP 的 `style-src 'unsafe-inline'` | P2 | 样式外置或 nonce 化后收紧 |
+| D6 | CSP 的 `style-src 'unsafe-inline'` | 已关闭 | 77 处内联 style 全部改为 utility class（pages 69 / app 2 / web 6）；动态背景改 `<img class="app-bg">`；错误页改外链 CSS；`style-src 'self'`，浏览器 71/71 + journey 60/60 |
 | D7 | 管理端设备密钥端点曾在文档中承诺但代码未实现（已修文档） | 已关闭 | 若确需该能力，先写代码，再写文档 |
 | D8 | `docs/security.md` 曾写「设备密钥只存摘要、明文只显示一次」，与实现（加密副本、可再次查看）相反 | 已关闭（P0） | 已按 K2 改写；改该段必须同步 §6.1 |
 | D9 | 上游协议基线曾未钉版本号，仅有 `fixtures/protocol/v1` 作证 | 已关闭 | `fixtures/protocol/v1/manifest.json` 已记录上游提交 `14037e78f45e14f7a5ad56c2266944548def7e3d`（协议包 0.5.21），README 记录来源与核对方式 |

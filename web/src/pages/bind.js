@@ -5,8 +5,8 @@ export function init() {
   const mode = $('bind-mode')
   const sync = () => {
     const byCode = mode.value === 'code'
-    $('bind-cd').style.display = byCode ? '' : 'none'
-    $('bind-pw').style.display = byCode ? 'none' : ''
+    $('bind-cd').classList.toggle('u-hidden', !byCode)
+    $('bind-pw').classList.toggle('u-hidden', byCode)
   }
   if (mode) { mode.onchange = sync; sync() }
   const send = $('bind-send')

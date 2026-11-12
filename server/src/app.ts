@@ -1,5 +1,5 @@
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http'
-import { readAsset, webAssetsMissing } from './assets.js'
+import { readAsset, webAssets, webAssetsMissing } from './assets.js'
 import { THEME_BOOT_HASH } from './pages.js'
 import { isIP } from 'node:net'
 import { randomUUID } from 'node:crypto'
@@ -253,7 +253,7 @@ export function createApp(settings: Settings, deps: { pool?: Pool; mailer?: Mail
     const method = req.method ?? 'GET'
     res.setHeader('X-Content-Type-Options', 'nosniff')
     res.setHeader('Referrer-Policy', 'same-origin')
-    res.setHeader('Content-Security-Policy', "default-src 'self'; img-src 'self' https: data:; style-src 'self' 'unsafe-inline'; script-src 'self' 'sha256-" + THEME_BOOT_HASH + "'; connect-src 'self'; base-uri 'none'; frame-ancestors 'none'")
+    res.setHeader('Content-Security-Policy', "default-src 'self'; img-src 'self' https: data:; style-src 'self'; script-src 'self' 'sha256-" + THEME_BOOT_HASH + "'; connect-src 'self'; base-uri 'none'; frame-ancestors 'none'")
     res.setHeader('Cache-Control', 'no-store')
 
     const isCallback = method === 'GET' && path === '/api/v1/auth/oidc/callback'
@@ -620,9 +620,8 @@ export function createApp(settings: Settings, deps: { pool?: Pool; mailer?: Mail
         const heading = code === 'METHOD_NOT_FOUND' ? '页面不存在' : code === 'AUTH_INVALID' ? '请重新登录' : '出错了'
         res.writeHead(status, { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'no-store' })
         res.end('<!doctype html><html lang="zh-CN"><meta charset="utf-8"><title>' + heading + ' · DSH Remote</title>' +
-          '<style>body{margin:0;font:16px/1.6 system-ui,sans-serif;background:#0b0f16;color:#e7eef8;display:grid;place-items:center;min-height:100vh}' +
-          'main{max-width:34rem;padding:0 1.4rem}main a{color:#8fb0ff}</style>' +
-          '<main><h1 style="font-size:22px;margin:0 0 8px">' + heading + '</h1><p style="color:#8b98ab;margin:0 0 16px">' + (error instanceof ApiError && error.detail ? error.detail : '请求未能完成') + '</p>' +
+          '<link rel="stylesheet" href="/assets/' + (webAssets?.css ?? '') + '"><body class="errpage">' +
+          '<main><h1>' + heading + '</h1><p>' + (error instanceof ApiError && error.detail ? error.detail : '请求未能完成') + '</p>' +
           '<p><a href="/">返回首页</a> · <a href="/login">重新登录</a></p></main>')
         return
       }

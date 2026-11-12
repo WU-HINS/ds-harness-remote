@@ -130,3 +130,21 @@ pnpm verify（57 s）  build ✓ check ✓ guard 12/12 ✓ test ✓
   protocol 94；server 322；合计 416 条断言，0 failed
 protocol-walkthrough（真库） PASS
 ```
+
+---
+
+# 目标轮 · D6：CSP `style-src 'unsafe-inline'` 移除
+
+- 77 处内联 `style` 全部移除：`pages.ts` 69、`app.ts` 2（错误页）、`web/src` 6。
+- `web/src/app.css` 新增 35+ 个 utility class；动态背景改为 `<img class="app-bg">` + `body.has-bg::before` 遮罩；错误页改外链 `app.css` + `.errpage`。
+- `bind.js` 用 `classList.toggle('u-hidden')` 替代 `style.display`；`bind-pw` 的 `u-hidden` 改为仅 SSO 时输出。
+- CSP：`style-src 'self'`；http-smoke 断言 `style-src 'self'` 且无 `unsafe-inline`。
+- 浏览器新增错误页断言（外链样式 + 无 CSP console error），从 70→**71/71**。
+
+评审 `reviewer-rotate` 首轮 REJECT（错误页仍发 `<style>`，被 CSP 拦截）；修复后 **APPROVE**，P2（bind 初始可见性、margin shorthand、dead rule）已修。
+
+## 发布 1.18.0
+
+- 三处版本 1.18.0；D4/D6 关闭。
+- 最终门禁：verify **416** 断言（server 322 + protocol 94）、test:pg 9、browser **71/71**、journey 60/60、guard 12/12。
+- tag `v1.18.0`、CI/Release、镜像 `1.18.0 / 1.18 / latest` 在推送后核对。

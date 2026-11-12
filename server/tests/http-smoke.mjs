@@ -74,7 +74,8 @@ const storedLimits = await pool.query("SELECT value FROM server_settings WHERE k
 const storedConn = storedLimits.rows[0]?.value?.limits?.userConnectionLimit
 check('invalid limits rejected', badLimits.status === 400 && afterBad.body.limits.userConnectionLimit === 16 && storedConn !== -5, badLimits.status + ' | api=' + afterBad.body.limits.userConnectionLimit + ' db=' + storedConn)
 
-check('[S8] csp blocks inline scripts', /script-src 'self' 'sha256-[A-Za-z0-9+/=]+'/.test(csp) && !/script-src[^;]*unsafe-inline/.test(csp), csp.slice(0, 90))
+check('[S8] csp blocks inline scripts and styles', /script-src 'self' 'sha256-[A-Za-z0-9+/=]+'/.test(csp) && !/script-src[^;]*unsafe-inline/.test(csp)
+  && /style-src 'self'(;|$)/.test(csp) && !/style-src[^;]*unsafe-inline/.test(csp), csp.slice(0, 120))
 const loginHtml = String(loginPageRes.body)
 check('assets are external', loginHtml.includes('src="/assets/app.') && loginHtml.includes('.js" defer></script>') && /<script>[^<]*localStorage/.test(loginHtml))
 
