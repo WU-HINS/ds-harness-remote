@@ -21,7 +21,7 @@ cp -r ../packages/protocol/src "$OUT/src/protocol"
 $TSC "$OUT/src/protocol/index.ts" --outDir "$OUT/build" \
   --target es2022 --module nodenext --moduleResolution nodenext \
   --skipLibCheck --declaration --types node
-cp "$OUT/build/index.d.ts" "$OUT/node_modules/@dsh-remote/protocol/index.d.ts"
+cp "$OUT"/build/*.d.ts "$OUT/node_modules/@dsh-remote/protocol/"
 cat > "$OUT/node_modules/@dsh-remote/protocol/package.json" <<'JSON'
 { "name": "@dsh-remote/protocol", "version": "0.0.0", "type": "module",
   "main": "index.js", "types": "index.d.ts",

@@ -1,5 +1,10 @@
 export * from './loopback.js'
 import { parseWireJson } from './wire-json.js'
+export * from './frames.js'
+export * from './acp.js'
+export { MAX_SECURE_MESSAGE_BYTES, SECURE_FRAGMENT_CHUNK_BYTES, SecureMessageCodec } from './secure-message.js'
+import { normalizeSdpMLineIndex, selectedTransports } from './frames.js'
+import type { ControlFrame, RelayDataFrame, ControlFrameByteLimits, HelloPayload, HelloAckPayload, ConnectRequestPayload, ConnectIncomingPayload, ConnectAcceptedPayload, ConnectRejectedPayload, SecureHandshakePayload, ControlErrorPayload, RelayPayload, SignalPayload, SignalIcePayload, TransportSelectedPayload } from './frames.js'
 import { z } from 'zod'
 
 export const WEBRTC_RESUME_CAPABILITY = 'transport.webrtc.resume.v1'
@@ -33,8 +38,6 @@ export const SERVER_SHUTDOWN_CLOSE_REASON: string = SERVER_SHUTDOWN_REASON_NAME
 export const PROTOCOL_VERSION = 1
 export const MAX_CONTROL_FRAME_BYTES = 64 * 1024
 export const MAX_RELAY_FRAME_BYTES = 1024 * 1024
-export const SECURE_FRAGMENT_CHUNK_BYTES = 48 * 1024
-export const MAX_SECURE_MESSAGE_BYTES = 4 * 1024 * 1024
 /** Decoded bytes carried by one authenticated Harness business transfer chunk. */
 export const HARNESS_API_TRANSFER_CHUNK_BYTES = 512 * 1024
 /** Decoded bytes carried by one authenticated Codex domain transfer chunk. */
@@ -91,32 +94,6 @@ export const MIN_REPLAY_WINDOW_EVENTS = 10_000
 export const MIN_REPLAY_WINDOW_MS = 15 * 60_000
 /** Maximum concurrent alpha streams per connection. */
 export const MAX_ALPHA_STREAMS_PER_CONNECTION = 16
-/** Generic Agent Client Protocol capability and bounded gateway limits. */
-export const ACP_CAPABILITY = 'agent.acp.v1' as const
-export const ACP_PI_CAPABILITY = 'agent.acp.pi.v1' as const
-export const ACP_WORKSPACE_FILES_CAPABILITY = 'agent.acp.workspace-files.v1' as const
-export const ACP_TERMINAL_CAPABILITY = 'agent.acp.terminal.v1' as const
-export const ACP_ANTIGRAVITY_MODELS_CAPABILITY = 'agent.acp.antigravity.models.v1' as const
-export const ACP_ANTIGRAVITY_MODEL_LOAD_CAPABILITY = 'agent.acp.antigravity.model-load.v1' as const
-export const ACP_OPENCODE_CAPABILITY = 'agent.acp.opencode.v1' as const
-export const ACP_OPENCODE_ARCHIVE_CAPABILITY = 'agent.acp.opencode.archive.v1' as const
-export const ACP_TOOL_CALL_ENDPOINTS = ['workspaceFiles/list', 'workspaceFiles/stat', 'workspaceFiles/read', 'workspaceFiles/readBytes', 'workspaceFiles/readAll',
-  'terminal/environment', 'terminal/shells', 'terminal/list', 'terminal/create', 'terminal/write', 'terminal/resize', 'terminal/rename', 'terminal/close'] as const
-export const ACP_TOOL_STREAM_ENDPOINTS = ['workspaceFiles/changes', 'terminal/follow', 'terminal/retain'] as const
-export interface AcpModelSelection { provider: string; model: string; reasoningEffort?: string }
-export interface AcpSessionModels {
-  current: AcpModelSelection; routable: boolean;
-  groups: Array<{ id: string; name: string; models: Array<{ id: string; name: string; reasoning?: { efforts: Array<{ id: string; name: string }>; defaultEffort?: string } }> }>;
-  failures: Array<{ id: string; name: string; message: string }>;
-}
-export const MAX_ACP_PROMPT_BYTES = 64 * 1024
-export const MAX_ACP_UPDATE_BYTES = 512 * 1024
-
-const SECURE_FRAGMENT_MAGIC = new Uint8Array([0x44, 0x53, 0x48, 0x46]) // DSHF
-const SECURE_FRAGMENT_VERSION = 1
-const SECURE_FRAGMENT_HEADER_BYTES = 17
-const MAX_IN_FLIGHT_SECURE_MESSAGES = 8
-
 export const messageTypes = [
   'rpc.request',
   'rpc.response',
@@ -328,153 +305,6 @@ export interface BrowserAuthorizationExchangeResponse extends DeviceTokenPair {
   account: string
 }
 
-export interface ControlFrame<TPayload = unknown> {
-  v: typeof PROTOCOL_VERSION
-  id: string
-  type: ControlFrameType
-  timestamp: number
-  payload: TPayload
-}
-
-/** Envelope used by the independent Relay data WebSocket. */
-export interface RelayDataFrame<TPayload extends Record<string, unknown> = Record<string, unknown>> {
-  v: typeof PROTOCOL_VERSION
-  id: string
-  type: string
-  timestamp: number
-  payload: TPayload
-}
-
-export interface ControlFrameByteLimits {
-  maxControlFrameBytes?: number
-  maxRelayFrameBytes?: number
-}
-
-export interface HelloPayload {
-  recoveryTickets?: string[]
-  role: 'host' | 'client'
-  deviceId: string
-  accessToken: string
-  protocols: number[]
-  capabilities: string[]
-  /** Version of the Client/Plugin software reporting in; symmetric to ``HelloAckPayload.serverVersion``. */
-  clientVersion?: string
-  /** Host Harness version; sent on first hello to refresh the device record. */
-  harnessVersion?: string
-}
-
-export interface HelloAckPayload {
-  protocol: typeof PROTOCOL_VERSION
-  serverVersion: string
-  connectionSessionId: string
-  heartbeatIntervalMs: number
-  maxControlFrameBytes: number
-  maxRelayFrameBytes: number
-  capabilities?: string[]
-  /** Optional implementation extension. This field reports WebRTC DataChannel support. */
-  webrtcEnabled?: boolean
-  /** Optional implementation extension. This field sets the Relay fallback timeout. */
-  webrtcFallbackTimeoutMs?: number
-}
-
-export interface ConnectRequestPayload {
-  hostDeviceId: string
-  preferredTransports: Array<'lan' | 'p2p' | 'turn' | 'relay'>
-}
-
-export interface ConnectIncomingPayload {
-  relayRecoveryTicket?: string
-  recoveryTicket?: string
-  connectionId: string
-  clientDeviceId: string
-  clientIdentityKey: string
-  authorization: 'account'
-  preferredTransports: Array<'lan' | 'p2p' | 'turn' | 'relay'>
-  /** Optional independent Relay data-plane assignment. */
-  relayEndpoint?: string
-  relayTicket?: string
-  relayNodeId?: string
-  relayEpoch?: number
-}
-
-export interface ConnectAcceptedPayload {
-  relayRecoveryTicket?: string
-  recoveryTicket?: string
-  connectionId: string
-  /** Optional independent Relay data-plane assignment. */
-  relayEndpoint?: string
-  relayTicket?: string
-  relayNodeId?: string
-  relayEpoch?: number
-}
-
-export interface ConnectRejectedPayload {
-  connectionId: string
-  code?: string
-  message?: string
-}
-
-export interface SecureHandshakePayload {
-  connectionId: string
-  targetDeviceId: string
-  step: number
-  data: string
-}
-
-export interface ControlErrorPayload {
-  /** §23 defines standard codes. Subsystems can add names such as CODEX_* and FILE_VIEWER_*. */
-  code: ErrorCode | (string & {})
-  message: string
-  retryable?: boolean
-  connectionId?: string
-}
-
-export interface RelayPayload {
-  connectionId: string
-  targetDeviceId: string
-  counter: number
-  ciphertext: string
-}
-
-export const selectedTransports = ['lan', 'p2p', 'turn', 'relay'] as const
-export type SelectedTransport = typeof selectedTransports[number]
-
-export interface SignalPayload {
-  connectionId: string
-  targetDeviceId: string
-  sdp: string
-}
-
-export interface IceCandidatePayload {
-  candidate?: string
-  sdpMid?: string | null
-  sdpMLineIndex?: number | null
-  usernameFragment?: string | null
-}
-
-export interface SignalIcePayload {
-  connectionId: string
-  targetDeviceId: string
-  candidate: IceCandidatePayload
-}
-
-export function normalizeSdpMLineIndex(value: unknown): number | null | undefined {
-  if (value === undefined) return undefined
-  if (value === null) return null
-  if (typeof value !== 'number' || !Number.isInteger(value) || value < 0) return null
-  return value
-}
-
-export interface TransportSelectedPayload {
-  connectionId: string
-  targetDeviceId: string
-  transport: SelectedTransport
-  /** Relay hostname the client actually used when transport is "turn"
-   *  (best-effort, from ICE stats; absent for other transports). */
-  turnNode?: string
-}
-
-/** Capabilities both ends announce in ``hello`` to negotiate the data plane. */
 export const transportCapabilities = [
   'transport.lan',
   'transport.p2p',
@@ -549,16 +379,6 @@ export interface RpcRequestPayload<TParams = unknown> {
   method: RpcMethod
   params: TParams
 }
-
-export type AcpBackend = 'cursor' | 'claude' | 'opencode' | 'pi' | 'hermes' | 'antigravity' | (string & {})
-export interface AcpInitializeParams { protocolVersion: 1; backend?: AcpBackend }
-export interface AcpInitializeResult { protocolVersion: 1; capability: typeof ACP_CAPABILITY; backend: AcpBackend; capabilities: string[]; availableBackends?: AcpBackend[] }
-export interface AcpSessionParams { sessionId?: string; cwd?: string; mode?: string; backend?: AcpBackend }
-export interface AcpPromptParams { sessionId: string; prompt: string; images?: Array<{ mimeType: string; data: string }> }
-export interface AcpPermissionResponseParams { sessionId: string; requestId: string; decision: 'allow_once' | 'deny' }
-export interface AcpCancelParams { sessionId: string }
-export interface AcpSetModeParams { sessionId: string; mode: string }
-export interface AcpSessionUpdate { sessionId: string; update: unknown; seq: number }
 
 export interface RpcResponsePayload<TResult = unknown> {
   requestId: string
@@ -802,76 +622,6 @@ export type CodexAppTransferCommitResult =
   | { kind: 'chunked'; transferId: string; totalBytes: number; totalChunks: number }
 
 export interface CodexAppTransferReadResult {
-  transferId: string
-  index: number
-  data: string
-}
-
-/** Fixed allowlisted Agent ACP call carried inside Remote. */
-export interface AgentAcpCallParams {
-  method: string
-  params: unknown
-}
-
-export interface AcpSessionArchivedData { backend: 'opencode'; sessionId: string; archived: true }
-
-export interface AgentAcpRespondParams {
-  requestHandle: string
-  decision: 'allow-once' | 'reject-once' | 'cancel'
-  /** Optional structured answer for backend extension methods (ask_question / create_plan). */
-  result?: unknown
-}
-
-export type AcpWorkspaceToolCallEndpoint = 'workspaceFiles/list' | 'workspaceFiles/stat' | 'workspaceFiles/read' | 'workspaceFiles/readBytes' | 'workspaceFiles/readAll'
-  | 'terminal/environment' | 'terminal/shells' | 'terminal/list' | 'terminal/create' | 'terminal/write' | 'terminal/resize' | 'terminal/rename' | 'terminal/close'
-export type AcpWorkspaceToolStreamEndpoint = 'workspaceFiles/changes' | 'terminal/follow' | 'terminal/retain'
-export interface AcpWorkspaceToolParams { sessionId: string; backend: 'cursor' | 'antigravity' | 'pi' | 'opencode' | 'claude' | 'hermes'; endpoint: AcpWorkspaceToolCallEndpoint; args: Record<string, unknown> }
-export interface AcpModelParams { sessionId: string; backend: 'cursor' | 'claude' | 'antigravity' | 'pi' | 'opencode' }
-export interface AcpModelSelectionParams extends AcpModelParams { model: string; reasoningEffort?: string }
-export interface AgentAcpStreamOpenParams {
-  streamId: string
-  sessionId: string
-  tool?: { backend: 'cursor' | 'antigravity' | 'pi' | 'opencode' | 'claude' | 'hermes'; endpoint: AcpWorkspaceToolStreamEndpoint; args: Record<string, unknown> }
-}
-
-export interface AgentAcpStreamCloseParams {
-  streamId: string
-}
-
-export interface AgentAcpFrameData {
-  streamId: string
-  frame: {
-    method: string
-    params: unknown
-  }
-}
-
-export interface AgentAcpStreamClosedData {
-  streamId: string
-  reason: 'cancelled' | 'completed' | 'failed' | 'peer-disconnected'
-}
-
-export interface AgentAcpTransferOpenParams {
-  transferId: string
-  totalBytes: number
-  totalChunks: number
-}
-
-export interface AgentAcpTransferChunkParams {
-  transferId: string
-  index: number
-  data: string
-}
-
-export interface AgentAcpTransferCommitParams { transferId: string }
-export interface AgentAcpTransferReadParams { transferId: string; index: number }
-export interface AgentAcpTransferCloseParams { transferId: string }
-
-export type AgentAcpTransferCommitResult =
-  | { kind: 'inline'; response: unknown }
-  | { kind: 'chunked'; transferId: string; totalBytes: number; totalChunks: number }
-
-export interface AgentAcpTransferReadResult {
   transferId: string
   index: number
   data: string
@@ -1350,111 +1100,6 @@ export function encodeMessage(message: RemoteMessage): Uint8Array {
 
 export function decodeMessage(data: Uint8Array | string): RemoteMessage {
   return parseRemoteMessage(parseWireJson(data))
-}
-
-interface FragmentAssembly {
-  total: number
-  totalBytes: number
-  receivedBytes: number
-  chunks: Uint8Array[]
-}
-
-/**
- * Splits application plaintext before Noise encryption and reassembles it
- * after decryption. Noise transport messages have a 65,535-byte ceiling, so
- * large native ApiProxy responses cannot be encrypted as one message.
- */
-export class SecureMessageCodec {
-  private nextMessageId = 1
-  private readonly assemblies = new Map<number, FragmentAssembly>()
-
-  encode(message: Uint8Array): Uint8Array[] {
-    if (message.byteLength > MAX_SECURE_MESSAGE_BYTES) {
-      throw new Error('Secure message exceeds the reassembly limit.')
-    }
-    if (message.byteLength <= SECURE_FRAGMENT_CHUNK_BYTES) return [message]
-
-    const messageId = this.nextMessageId
-    this.nextMessageId = messageId === 0xffff_ffff ? 1 : messageId + 1
-    const total = Math.ceil(message.byteLength / SECURE_FRAGMENT_CHUNK_BYTES)
-    const frames: Uint8Array[] = []
-    for (let index = 0; index < total; index += 1) {
-      const start = index * SECURE_FRAGMENT_CHUNK_BYTES
-      const chunk = message.subarray(start, Math.min(message.byteLength, start + SECURE_FRAGMENT_CHUNK_BYTES))
-      const frame = new Uint8Array(SECURE_FRAGMENT_HEADER_BYTES + chunk.byteLength)
-      frame.set(SECURE_FRAGMENT_MAGIC)
-      frame[4] = SECURE_FRAGMENT_VERSION
-      const view = new DataView(frame.buffer)
-      view.setUint32(5, messageId)
-      view.setUint16(9, index)
-      view.setUint16(11, total)
-      view.setUint32(13, message.byteLength)
-      frame.set(chunk, SECURE_FRAGMENT_HEADER_BYTES)
-      frames.push(frame)
-    }
-    return frames
-  }
-
-  decode(frame: Uint8Array): Uint8Array | undefined {
-    if (!isSecureFragment(frame)) return frame
-    if (frame.byteLength < SECURE_FRAGMENT_HEADER_BYTES || frame[4] !== SECURE_FRAGMENT_VERSION) {
-      throw new Error('Secure fragment header is invalid.')
-    }
-    const view = new DataView(frame.buffer, frame.byteOffset, frame.byteLength)
-    const messageId = view.getUint32(5)
-    const index = view.getUint16(9)
-    const total = view.getUint16(11)
-    const totalBytes = view.getUint32(13)
-    if (messageId === 0 || total < 2 || index >= total || totalBytes <= SECURE_FRAGMENT_CHUNK_BYTES
-      || totalBytes > MAX_SECURE_MESSAGE_BYTES
-      || total !== Math.ceil(totalBytes / SECURE_FRAGMENT_CHUNK_BYTES)) {
-      throw new Error('Secure fragment metadata is invalid.')
-    }
-    const expectedChunkBytes = Math.min(
-      SECURE_FRAGMENT_CHUNK_BYTES,
-      totalBytes - index * SECURE_FRAGMENT_CHUNK_BYTES,
-    )
-    const chunk = frame.subarray(SECURE_FRAGMENT_HEADER_BYTES)
-    if (chunk.byteLength !== expectedChunkBytes) throw new Error('Secure fragment length is invalid.')
-
-    let assembly = this.assemblies.get(messageId)
-    if (assembly === undefined) {
-      if (index !== 0 || this.assemblies.size >= MAX_IN_FLIGHT_SECURE_MESSAGES) {
-        throw new Error('Secure fragment sequence is invalid.')
-      }
-      assembly = { total, totalBytes, receivedBytes: 0, chunks: [] }
-      this.assemblies.set(messageId, assembly)
-    }
-    if (assembly.total !== total || assembly.totalBytes !== totalBytes || index !== assembly.chunks.length) {
-      this.assemblies.delete(messageId)
-      throw new Error('Secure fragment sequence is invalid.')
-    }
-    assembly.chunks.push(Uint8Array.from(chunk))
-    assembly.receivedBytes += chunk.byteLength
-    if (assembly.chunks.length < total) return undefined
-    this.assemblies.delete(messageId)
-    if (assembly.receivedBytes !== totalBytes) throw new Error('Secure message length is invalid.')
-    const message = new Uint8Array(totalBytes)
-    let offset = 0
-    for (const part of assembly.chunks) {
-      message.set(part, offset)
-      offset += part.byteLength
-    }
-    return message
-  }
-
-  reset(): void {
-    this.nextMessageId = 1
-    this.assemblies.clear()
-  }
-}
-
-function isSecureFragment(frame: Uint8Array): boolean {
-  if (frame.byteLength < SECURE_FRAGMENT_MAGIC.byteLength) return false
-  for (let index = 0; index < SECURE_FRAGMENT_MAGIC.byteLength; index += 1) {
-    if (frame[index] !== SECURE_FRAGMENT_MAGIC[index]) return false
-  }
-  return true
 }
 
 function assertControlFrameSize(bytes: number, type: ControlFrameType, limits: ControlFrameByteLimits): void {

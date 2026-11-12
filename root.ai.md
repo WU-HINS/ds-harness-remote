@@ -177,7 +177,7 @@
 | `server/src/app.ts` | 665（1089→665；累计 1090→665：分组路由表 + `routes/*` handler 模块） |
 | `server/src/store-pg.ts` | 607（612→607：审计白名单与失败上抛、单写者租约失败上抛；累计 799→607） |
 | `server/src/gateway.ts` | 417（556→417：抽出 `gateway-links.ts` 连接状态机；累计 733→417） |
-| `packages/protocol/src/index.ts` | 1473 |
+| `packages/protocol/src/index.ts` | 1118（1473→1118：拆出 frames.ts / acp.ts / secure-message.ts） |
 
 规则：
 
@@ -383,7 +383,7 @@
 | D1 | `server/src/app.ts` 1090 行：路由分发、handler、页面装配混在一处 | 已关闭 | 已拆出分组路由表与 `routes/admin.ts`、`routes/auth-flows.ts`；`app.ts` 1089→665（累计 1090→665）；分组表在 app.ts，exact 路径在 `routes/*`，`route-doc-sync` 同时扫描两者 |
 | D2 | `server/src/store-pg.ts` 770 行：连接、认证、设备、审计、设置混在一个类 | 已关闭 | 已拆出 `store/core.ts`、`store/device-keys.ts`、`store/sessions.ts`、`store/email-codes.ts`；`store-pg.ts` 770→612（拆分）、612→607（审计/租约修复），Store 仍是唯一事务与数据入口 |
 | D3 | `server/src/gateway.ts` 连接状态机与链路转发曾在同一类 | 已关闭 | 已抽出 `gateway-links.ts`（connect/signal/handshake/transport/relay counter），`gateway.ts` 556→417；`gateway-link-flow.mjs` 11 条真实 WS 用例 |
-| D4 | `packages/protocol/src/index.ts` 1473 行 | P2 | 按帧类型拆文件，导出面不变 |
+| D4 | `packages/protocol/src/index.ts` 1473 行 | 已关闭 | 已拆出 `frames.ts`（帧/载荷类型）、`acp.ts`（ACP 常量与类型）、`secure-message.ts`（分片编解码）；index 1473→1118，导出集合不变 |
 | D5 | `app.ts` 里曾有 1 处 `console.warn`（route_not_found 兜底） | 已关闭 | 改为 `logger.warn('route_not_found', …)`；`consoleExemptions` 清空 |
 | D6 | CSP 的 `style-src 'unsafe-inline'` | P2 | 样式外置或 nonce 化后收紧 |
 | D7 | 管理端设备密钥端点曾在文档中承诺但代码未实现（已修文档） | 已关闭 | 若确需该能力，先写代码，再写文档 |

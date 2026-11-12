@@ -106,3 +106,27 @@ pnpm test:pg 9 passed；Chromium 70/70；真 SMTP+OIDC 60/60
 ```
 
 `reviewer-diff2`：**APPROVE**（0 P0/P1）；唯一 P2（连接状态机无本地用例）已由 `gateway-link-flow.mjs` 关闭。
+
+---
+
+# 目标轮 · D4：协议按帧/领域拆分
+
+- 新增：
+  - `packages/protocol/src/frames.ts`（150 行）：ControlFrame / RelayDataFrame / 各帧 payload 类型；
+  - `packages/protocol/src/acp.ts`（103 行）：ACP 能力常量、endpoint 列表、ACP/Agent ACP 类型；
+  - `packages/protocol/src/secure-message.ts`（113 行）：SecureMessageCodec 与分片常量。
+- `index.ts` **1473→1118**；index 只保留 re-export、wire 编解码、schema 与协议辅助函数。
+- `server/scripts/smoke-store.sh` 现在把 protocol 的全部 `*.d.ts` 复制进 smoke 包（index.d.ts 已相对 re-export frames/acp/secure-message）。
+- 导出面：AST 对比 **242 exports 全等**，0 missing/0 added；runtime 127 个值一致；strict consumer 导入 7 个代表符号通过。
+- 协议 9 套 94 tests、双端 walkthrough（真 PostgreSQL：connect/handshake/relay/counter/revoke）全绿。
+- D4 关闭；protocol 预算 1118。
+
+评审 `reviewer-diff2`：**APPROVE**；P2（预算 1124→1118、index 残留 4 个 secure 常量）已修。
+
+## 门禁
+
+```
+pnpm verify（57 s）  build ✓ check ✓ guard 12/12 ✓ test ✓
+  protocol 94；server 322；合计 416 条断言，0 failed
+protocol-walkthrough（真库） PASS
+```
