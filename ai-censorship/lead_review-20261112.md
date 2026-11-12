@@ -148,3 +148,11 @@ protocol-walkthrough（真库） PASS
 - 三处版本 1.18.0；D4/D6 关闭。
 - 最终门禁：verify **416** 断言（server 322 + protocol 94）、test:pg 9、browser **71/71**、journey 60/60、guard 12/12。
 - tag `v1.18.0`、CI/Release、镜像 `1.18.0 / 1.18 / latest` 在推送后核对。
+
+## 发布结果（v1.18.0）
+
+- CI run 43230510693：Check and test ✓ / Build image (no push) ✓ / Store smoke on PostgreSQL ✓
+- Release run 43230510346：Validate tag ✓ / Publish image ✓ / Create GitHub release ✓
+- Release：https://github.com/WU-HINS/ds-harness-remote/releases/tag/v1.18.0
+- 镜像：`ghcr.io/wu-hins/ds-harness-remote/server` → `1.18.0`、`1.18`、`latest`
+- tag `v1.18.0` → `f03f94d`
